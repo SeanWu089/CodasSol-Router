@@ -22,8 +22,10 @@ private state and should never be committed.
 
 The current V1 is intentionally conservative: it transparently proxies MCP
 HTTP traffic to one DevSpace backend while preserving streaming and upstream
-authentication behavior. Device discovery, persistent workspace routing and a
-Windows outbound agent are the next layer under development.
+authentication behavior. The routing core now includes device presence,
+platform-aware project-root matching, fail-closed device selection and
+persistent workspace-to-device bindings. A Windows outbound agent and live MCP
+integration are the next transport layer.
 
 ## Start
 

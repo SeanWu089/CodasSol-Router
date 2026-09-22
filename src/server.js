@@ -50,11 +50,7 @@ export function createRouterServer(config = loadConfig()) {
       const backendReachable = await probeBackend(config);
       const payload = JSON.stringify({
         ok: true,
-        backend: {
-          host: config.backendHost,
-          port: config.backendPort,
-          reachable: backendReachable
-        }
+        backendReachable
       });
       res.writeHead(200, {
         "content-type": "application/json; charset=utf-8",

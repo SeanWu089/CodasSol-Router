@@ -140,7 +140,7 @@ test("health endpoint reports backend reachability", async () => {
   assert.equal(response.statusCode, 200);
   const payload = JSON.parse(response.body);
   assert.equal(payload.ok, true);
-  assert.equal(payload.backend.reachable, true);
+  assert.equal(payload.backendReachable, true);
   await close(router);
   await close(backend);
 });
