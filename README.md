@@ -20,12 +20,11 @@ private state and should never be committed.
 
 ## Current status
 
-The current V1 is intentionally conservative: it transparently proxies MCP
-HTTP traffic to one DevSpace backend while preserving streaming and upstream
-authentication behavior. The routing core now includes device presence,
-platform-aware project-root matching, fail-closed device selection and
-persistent workspace-to-device bindings. A Windows outbound agent and live MCP
-integration are the next transport layer.
+The current V1 includes transparent local DevSpace proxying, device presence,
+platform-aware project-root matching, fail-closed device selection, persistent
+workspace-to-device bindings, an outbound remote Agent protocol, per-device
+Agent credentials, local DevSpace PKCE OAuth, and live MCP routing by
+`workspace_id`.
 
 ## Start
 
@@ -60,6 +59,24 @@ registrations, workspace bindings, credentials, and machine-specific settings.
 The default listener is loopback-only. If you use a tunnel or reverse proxy,
 keep credentials outside the repository and treat your own deployment as a
 private service.
+
+## Remote Agent
+
+Remote computers do not need their own public tunnel. A CodasSol Agent makes
+an outbound authenticated connection to the Router and talks to that machine's
+DevSpace over loopback.
+
+The Router creates a one-time enrollment boundary with a pairing token and then
+issues a different per-device Agent token. DevSpace OAuth remains local to each
+computer; owner/access/refresh tokens are never sent to the Router.
+
+Windows bootstrap scripts are available under `scripts/windows/`.
+See [docs/windows-setup.md](docs/windows-setup.md) for the setup flow.
+
+For development on macOS, `scripts/mac/start-router.sh` starts the Router as
+a side-by-side LAN service on port 17676 while leaving an existing DevSpace on
+7676 untouched. Runtime state, logs, pairing credentials and PID files stay
+under `~/.codassol/` and are not part of the repository.
 
 ## Security
 

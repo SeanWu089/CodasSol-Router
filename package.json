@@ -5,6 +5,11 @@
   "type": "module",
   "scripts": {
     "start": "node src/server.js",
+    "router:init": "node src/router-cli.js init",
+    "router:pairing-token": "node src/router-cli.js pairing-token",
+    "router:agents": "node src/router-cli.js agents",
+    "router:lan": "node src/router-cli.js lan",
+    "agent": "node src/agent.js run",
     "test": "node --test"
   },
   "engines": {
