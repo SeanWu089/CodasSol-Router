@@ -80,6 +80,9 @@ under `~/.codassol/` and are not part of the repository.
 
 `scripts/mac/install-autostart.sh` installs the same side-by-side Router as a
 per-user LaunchAgent so it is independent of the terminal that launched it.
+The script copies only the small runtime into
+`~/.local/share/codassol-router/`, avoiding the macOS privacy restrictions
+that can apply to background processes reading projects stored on Desktop.
 
 ## Security
 

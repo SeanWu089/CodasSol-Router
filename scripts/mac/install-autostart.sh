@@ -8,14 +8,21 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 NODE_BIN="$(command -v node)"
 STATE_DIR="${CODASSOL_STATE_DIR:-$HOME/.codassol}"
+RUNTIME_DIR="${CODASSOL_RUNTIME_DIR:-$HOME/.local/share/codassol-router}"
 PLIST_DIR="$HOME/Library/LaunchAgents"
 PLIST_PATH="$PLIST_DIR/$LABEL.plist"
 
-mkdir -p "$STATE_DIR" "$PLIST_DIR"
+mkdir -p "$STATE_DIR" "$PLIST_DIR" "$RUNTIME_DIR/src"
 chmod 700 "$STATE_DIR"
 
 cd "$REPO_DIR"
 node src/router-cli.js init >/dev/null
+
+# launchd processes may not have macOS privacy permission to traverse Desktop,
+# Documents, or Downloads. Install a small runtime copy outside those protected
+# folders instead of asking users for Full Disk Access.
+rsync -a --delete "$REPO_DIR/src/" "$RUNTIME_DIR/src/"
+cp "$REPO_DIR/package.json" "$RUNTIME_DIR/package.json"
 
 launchctl bootout "gui/$UID_VALUE/$LABEL" >/dev/null 2>&1 || true
 
@@ -29,10 +36,10 @@ cat >"$PLIST_PATH" <<EOF
   <key>ProgramArguments</key>
   <array>
     <string>$NODE_BIN</string>
-    <string>$REPO_DIR/src/server.js</string>
+    <string>$RUNTIME_DIR/src/server.js</string>
   </array>
   <key>WorkingDirectory</key>
-  <string>$REPO_DIR</string>
+  <string>$RUNTIME_DIR</string>
   <key>EnvironmentVariables</key>
   <dict>
     <key>CODASSOL_LISTEN_HOST</key>
