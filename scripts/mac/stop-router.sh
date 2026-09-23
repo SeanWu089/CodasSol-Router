@@ -4,9 +4,16 @@ set -euo pipefail
 
 STATE_DIR="${CODASSOL_STATE_DIR:-$HOME/.codassol}"
 PID_FILE="$STATE_DIR/router.pid"
+LABEL="com.codassol.router"
+UID_VALUE="$(id -u)"
+
+if launchctl print "gui/$UID_VALUE/$LABEL" >/dev/null 2>&1; then
+  launchctl bootout "gui/$UID_VALUE/$LABEL"
+  echo "CodasSol Router LaunchAgent stopped."
+fi
 
 if [[ ! -f "$PID_FILE" ]]; then
-  echo "CodasSol Router is not managed by the start script."
+  echo "No manually managed Router process found."
   exit 0
 fi
 

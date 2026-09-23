@@ -78,6 +78,9 @@ a side-by-side LAN service on port 17676 while leaving an existing DevSpace on
 7676 untouched. Runtime state, logs, pairing credentials and PID files stay
 under `~/.codassol/` and are not part of the repository.
 
+`scripts/mac/install-autostart.sh` installs the same side-by-side Router as a
+per-user LaunchAgent so it is independent of the terminal that launched it.
+
 ## Security
 
 See [SECURITY.md](SECURITY.md). In particular, do not publish real device
