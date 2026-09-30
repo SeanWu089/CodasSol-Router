@@ -52,7 +52,7 @@ function Get-AccessRoots {
       return $otherDrives
     }
     "4" {
-      $custom = (Read-Host "Enter roots separated by | (example C:\Users\ASUS|D:\|E:\PROJECTS)").Trim()
+      $custom = (Read-Host "Enter roots separated by | (example C:\Users\USER|D:\|E:\PROJECTS)").Trim()
       $roots = @($custom.Split("|") | ForEach-Object { $_.Trim() } | Where-Object { $_ })
       if ($roots.Count -eq 0) { throw "At least one root is required." }
       return $roots

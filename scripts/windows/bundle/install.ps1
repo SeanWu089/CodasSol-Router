@@ -35,7 +35,7 @@ function Resolve-RouterUrl([string]$Initial) {
   $candidate = $Initial.Trim().TrimEnd("/")
   while ($true) {
     if ([string]::IsNullOrWhiteSpace($candidate)) {
-      $candidate = (Read-Host "Router URL (example: http://192.168.1.10:17676)").Trim().TrimEnd("/")
+      $candidate = (Read-Host "Router URL (example: http://ROUTER-HOST:17676)").Trim().TrimEnd("/")
     }
     if (Test-Router $candidate) {
       return $candidate
@@ -109,7 +109,7 @@ function Resolve-AccessRoots([string]$RequestedRoots) {
       return $otherDrives -join "|"
     }
     "4" {
-      $custom = (Read-Host "Enter roots separated by | (example C:\Users\ASUS|D:\|E:\PROJECTS)").Trim()
+      $custom = (Read-Host "Enter roots separated by | (example C:\Users\USER|D:\|E:\PROJECTS)").Trim()
       if ([string]::IsNullOrWhiteSpace($custom)) { throw "At least one root is required." }
       return $custom
     }
