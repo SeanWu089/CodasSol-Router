@@ -3,6 +3,27 @@
 This guide connects a Windows computer to an already-running CodasSol Router.
 The Windows machine does not need an ngrok endpoint or inbound firewall rule.
 
+## Recommended personal setup: self-contained bundle
+
+For the personal deployment, build the Windows transfer bundle on the Router
+Mac with:
+
+    ./scripts/package-windows-agent.sh
+
+Transfer dist/CodasSol-Windows-Agent.zip to Windows, extract it, then
+double-click INSTALL.cmd.
+
+The bundle carries its own Windows Node 22 runtime, so the target PC does not
+need Git, a global Node installation, or administrator-level npm changes.
+DevSpace is installed privately under %LOCALAPPDATA%\CodasSol\Agent.
+
+For DevSpace downloads, the installer first tries npmmirror with a temporary
+per-command registry override, then the machine's existing npm/proxy
+configuration, then the official npm registry. It does not permanently change
+global registry or proxy settings.
+
+The repository-based setup below remains available for development.
+
 ## Prerequisites
 
 - Node.js 22 or newer
