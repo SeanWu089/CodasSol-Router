@@ -2,9 +2,9 @@
 
 # CodasSol Router
 
-### **Stop switching machines. Start giving orders.**
+### **Route the Project, Not Devices.**
 
-**One AI entry point. Any workspace. Any machine.**
+**Give the order anywhere. CodasSol finds the machine that owns the workspace.**
 
 [![Latest Release](https://img.shields.io/github/v/release/SeanWu089/CodasSol-Router?display_name=tag&logo=github)](https://github.com/SeanWu089/CodasSol-Router/releases/latest)
 [![Node.js](https://img.shields.io/badge/Node.js-22%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
@@ -339,6 +339,6 @@ MIT.
 
 <div align="center">
 
-### **Stop switching machines. Start giving orders.**
+### **Route the Project, Not Devices.**
 
 </div>
