@@ -87,9 +87,9 @@ cp "$REPO_DIR/scripts/windows/bundle/REPAIR-ROOT.cmd" "$BUILD_DIR/"
 cp "$REPO_DIR/scripts/windows/bundle/repair-root.ps1" "$BUILD_DIR/"
 cp "$REPO_DIR/scripts/windows/runtime/configure-devspace-root.mjs" "$BUILD_DIR/"
 
-ROUTER_IP="${CODASSOL_ROUTER_IP:-$(ipconfig getifaddr en0 2>/dev/null || true)}"
-if [[ -n "$ROUTER_IP" ]]; then
-  printf 'http://%s:17676\n' "$ROUTER_IP" > "$BUILD_DIR/router-default.txt"
+ROUTER_URL="${CODASSOL_ROUTER_URL:-}"
+if [[ -n "$ROUTER_URL" ]]; then
+  printf '%s\n' "$ROUTER_URL" > "$BUILD_DIR/router-default.txt"
 else
   : > "$BUILD_DIR/router-default.txt"
 fi
@@ -121,4 +121,8 @@ TXT
 )
 
 echo "Built: $DIST_DIR/CodasSol-Windows-Agent.zip"
-echo "Default Router URL: $(cat "$BUILD_DIR/router-default.txt" 2>/dev/null || true)"
+if [[ -s "$BUILD_DIR/router-default.txt" ]]; then
+  echo "Default Router URL: $(cat "$BUILD_DIR/router-default.txt")"
+else
+  echo "Default Router URL: <not embedded>"
+fi

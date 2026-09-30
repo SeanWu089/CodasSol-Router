@@ -13,6 +13,10 @@ Mac with:
 Transfer dist/CodasSol-Windows-Agent.zip to Windows, extract it, then
 double-click INSTALL.cmd.
 
+Public bundles do not embed a build machine's LAN address. The installer asks
+for the Router URL when no private default was intentionally supplied. For a
+private bundle, set `CODASSOL_ROUTER_URL` explicitly while packaging.
+
 The bundle carries its own Windows Node 22 runtime, so the target PC does not
 need Git, a global Node installation, or administrator-level npm changes.
 DevSpace is installed privately under %LOCALAPPDATA%\CodasSol\Agent.
