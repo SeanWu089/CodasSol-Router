@@ -1,7 +1,10 @@
 {
   "name": "codassol-router",
   "version": "0.1.2",
+  "description": "Transparent workspace routing for AI agents across physical machines.",
   "private": true,
+  "license": "MIT",
+  "repository": "github:SeanWu089/CodasSol-Router",
   "type": "module",
   "scripts": {
     "start": "node src/server.js",

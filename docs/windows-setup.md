@@ -5,13 +5,11 @@ The Windows machine does not need an ngrok endpoint or inbound firewall rule.
 
 ## Recommended personal setup: self-contained bundle
 
-For the personal deployment, build the Windows transfer bundle on the Router
-Mac with:
+For most users, download the latest Windows bundle from:
 
-    ./scripts/package-windows-agent.sh
+https://github.com/SeanWu089/CodasSol-Router/releases/latest
 
-Transfer dist/CodasSol-Windows-Agent.zip to Windows, extract it, then
-double-click INSTALL.cmd.
+Transfer the ZIP to Windows, extract it, then double-click INSTALL.cmd.
 
 Public bundles do not embed a build machine's LAN address. The installer asks
 for the Router URL when no private default was intentionally supplied. For a
@@ -27,6 +25,37 @@ configuration, then the official npm registry. It does not permanently change
 global registry or proxy settings.
 
 The repository-based setup below remains available for development.
+
+During installation, choose the workspace roots that CodasSol is allowed to
+route to this machine. The recommended profile grants the current Windows user
+profile plus fixed non-system drives. It does not grant the whole system drive
+C:\ by default, and it does not automatically include removable or network
+drives.
+
+The installer writes the same root list to both DevSpace allowedRoots and the
+CodasSol Agent configuration. This keeps the Router's advertised capabilities
+aligned with the machine-local security boundary.
+
+### Release notes
+
+- v0.1.0: first Windows bundle. Existing DevSpace roots could remain out of
+  sync with the roots advertised to the Router.
+- v0.1.1: synchronized DevSpace and Agent roots and added explicit access
+  profiles plus REPAIR-ROOT.cmd.
+- v0.1.2: public bundles no longer embed the build machine's private LAN Router
+  address. Private builds can intentionally prefill one with
+  CODASSOL_ROUTER_URL.
+
+The v0.1.0 root mismatch was fail-closed: DevSpace rejected paths outside its
+configured roots rather than granting extra access.
+
+## Build the bundle yourself
+
+On macOS:
+
+    ./scripts/package-windows-agent.sh
+
+The output is dist/CodasSol-Windows-Agent.zip.
 
 ## Prerequisites
 
