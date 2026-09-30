@@ -63,7 +63,7 @@ Instead of:
 you can aim for:
 
 ```text
-"Move the SuYou shortcut on my Windows desktop to the Recycle Bin."
+"Move a shortcut on my Windows desktop to the Recycle Bin."
 ```
 
 and the path becomes:
@@ -307,6 +307,7 @@ The next useful layers are not “more AI.” They are **better control over a p
 - secure Internet reachability without directly exposing the Router;
 - task hand-off between machines;
 - wake/sleep awareness and Wake-on-LAN;
+- separate device presence from execution-backend health, with automatic DevSpace recovery;
 - routing by hardware capability (`gpu`, `cuda`, `macos`, `office-pc`) in addition to path;
 - consumer workflows such as “send me that file,” “start this download,” or “run this task at home.”
 

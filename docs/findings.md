@@ -7,4 +7,5 @@
 - 2026-09-30 — Release verification should also scan installer text/examples
   for test-machine-looking identifiers; v0.1.3 replaces those with neutral
   placeholders.
-- 2026-09-30 — A live end-to-end test routed from the Mac Router into a Windows Desktop workspace and moved `SuYou.lnk` to the Windows Recycle Bin.
+- 2026-09-30 — A live end-to-end test routed from the Mac Router into a Windows Desktop workspace and moved a desktop shortcut to the Windows Recycle Bin.
+- 2026-09-30 — A later live session exposed a resilience gap: the Windows Agent heartbeat remained online while its local DevSpace backend became unreachable. The Router could still list the device but remote tool calls failed with an Agent-side fetch error. Device presence and execution-backend health must be tracked separately.
