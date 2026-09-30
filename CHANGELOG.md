@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.1.3 — 2026-09-30
+
+- Replaced test-machine-looking Router and Windows path examples with neutral
+  placeholders in public installer scripts.
+- Kept public release artifacts free of deployment-specific identifiers.
+
 ## v0.1.2 — 2026-09-30
 
 - Public Windows bundles no longer embed the build machine's private LAN Router address.

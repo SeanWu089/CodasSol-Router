@@ -77,7 +77,7 @@ must remain synchronized. v0.1.1 added installer support for this invariant.
 
 Public release bundles must not contain private Router addresses or deployment
 metadata. v0.1.2 removed the build-machine LAN address from public bundles by
-default.
+default. v0.1.3 also normalizes installer examples to neutral placeholders.
 
 ### Fail-closed routing
 

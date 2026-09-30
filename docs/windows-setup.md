@@ -45,6 +45,8 @@ aligned with the machine-local security boundary.
 - v0.1.2: public bundles no longer embed the build machine's private LAN Router
   address. Private builds can intentionally prefill one with
   CODASSOL_ROUTER_URL.
+- v0.1.3: public installer examples use neutral placeholders instead of
+  test-machine-looking usernames or addresses.
 
 The v0.1.0 root mismatch was fail-closed: DevSpace rejected paths outside its
 configured roots rather than granting extra access.

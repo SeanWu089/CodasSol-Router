@@ -233,6 +233,7 @@ Full Windows details: [`docs/windows-setup.md`](docs/windows-setup.md)
 - **Fail-closed routing** — ambiguity or offline state produces an error instead of a guess.
 - **Private state stays outside Git** — tokens, device records, bindings, and local paths remain private.
 - **Public release bundles contain no build-machine LAN address by default** as of `v0.1.2`.
+- **Public installer examples use neutral placeholders** as of `v0.1.3`.
 
 Read [`SECURITY.md`](SECURITY.md) before exposing a Router beyond a trusted network.
 
@@ -271,7 +272,12 @@ That makes CodasSol closer to a **transparent workspace router** than a remote-c
 
 ## Releases
 
-### `v0.1.2` — current
+### `v0.1.3` — current
+
+Public artifact hygiene. Installer examples use neutral placeholders rather
+than test-machine-looking usernames or addresses.
+
+### `v0.1.2`
 
 Public bundle privacy hotfix. Public Windows artifacts no longer embed the build machine's LAN Router address.
 
