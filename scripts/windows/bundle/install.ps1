@@ -135,7 +135,7 @@ $RuntimeDir = Join-Path $InstallRoot "runtime"
 $NodeExe = Join-Path $NodeDir "node.exe"
 $NpmCmd = Join-Path $NodeDir "npm.cmd"
 $AgentScript = Join-Path $AppDir "agent.js"
-$DevSpaceCmd = Join-Path $DevSpaceDir "node_modules\.bin\devspace.cmd"
+$DevSpaceCli = Join-Path $DevSpaceDir "node_modules\@waishnav\devspace\dist\cli.js"
 $DevSpaceVersion = "1.1.0-beta.4"
 $ConfigureRoots = Join-Path $RuntimeDir "configure-devspace-root.mjs"
 
@@ -168,8 +168,8 @@ Write-Host "Node verified: $nodeVersion"
 
 Write-Step "Installing DevSpace locally"
 $needsDevSpace = $true
-if (Test-Path $DevSpaceCmd) {
-  $currentVersion = (& $DevSpaceCmd --version 2>$null)
+if (Test-Path $DevSpaceCli) {
+  $currentVersion = (& $NodeExe $DevSpaceCli --version 2>$null)
   if ($LASTEXITCODE -eq 0 -and $currentVersion -match [regex]::Escape($DevSpaceVersion)) {
     $needsDevSpace = $false
     Write-Host "DevSpace already present: $currentVersion"
@@ -179,7 +179,8 @@ if ($needsDevSpace) {
   New-Item -ItemType Directory -Force -Path $DevSpaceDir | Out-Null
   Install-DevSpace -Npm $NpmCmd -Prefix $DevSpaceDir -Version $DevSpaceVersion
 }
-$devspaceVersionActual = & $DevSpaceCmd --version
+if (-not (Test-Path $DevSpaceCli)) { throw "DevSpace CLI is missing after installation: $DevSpaceCli" }
+$devspaceVersionActual = & $NodeExe $DevSpaceCli --version
 if ($LASTEXITCODE -ne 0) { throw "DevSpace verification failed." }
 Write-Host "DevSpace verified: $devspaceVersionActual"
 
@@ -190,7 +191,7 @@ if (-not (Test-Path $DevSpaceAuth)) {
   Write-Host "When asked where DevSpace will be used, choose: Coding Agents."
   Write-Host "Do not create a second public tunnel for this Windows machine."
   Write-Host ""
-  & $DevSpaceCmd init
+  & $NodeExe $DevSpaceCli init
   if ($LASTEXITCODE -ne 0) { throw "DevSpace initialization failed." }
 }
 if (-not (Test-Path $DevSpaceAuth)) {
