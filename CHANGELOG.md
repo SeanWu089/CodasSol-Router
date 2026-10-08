@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.1.4 — 2026-10-08
+
+- Added the Android V0 native Router/DevSpace health client and USB debug
+  tunnel workflow, with explicit mobile credential security boundaries.
+- Kept Router and Windows Agent protocol compatibility with v0.1.3.
+- Planned distributed routing as a separate v0.2 development milestone.
+
 ## v0.1.3 — 2026-09-30
 
 - Replaced test-machine-looking Router and Windows path examples with neutral
