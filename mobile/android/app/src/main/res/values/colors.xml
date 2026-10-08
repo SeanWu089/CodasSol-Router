@@ -1,0 +1,10 @@
+<resources>
+    <color name="background">#F7F7F5</color>
+    <color name="surface">#FFFFFF</color>
+    <color name="ink">#171717</color>
+    <color name="muted">#737373</color>
+    <color name="hairline">#E7E7E3</color>
+    <color name="success">#15803D</color>
+    <color name="danger">#B42318</color>
+    <color name="pending">#A16207</color>
+</resources>

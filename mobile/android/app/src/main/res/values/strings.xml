@@ -1,0 +1,18 @@
+<resources>
+    <string name="app_name">CodasSol</string>
+    <string name="eyebrow">CODASSOL MOBILE · V0</string>
+    <string name="headline">Route the Project,\nNot Devices.</string>
+    <string name="subtitle">A lightweight control surface for your CodasSol Router.</string>
+    <string name="router_label">ROUTER</string>
+    <string name="backend_label">EXECUTION BACKEND</string>
+    <string name="endpoint_label">USB ENDPOINT</string>
+    <string name="endpoint_value">http://127.0.0.1:17676</string>
+    <string name="checking">Checking…</string>
+    <string name="connected">Connected</string>
+    <string name="disconnected">Disconnected</string>
+    <string name="reachable">Reachable</string>
+    <string name="unreachable">Unavailable</string>
+    <string name="not_checked">Not checked yet</string>
+    <string name="retry">Check connection</string>
+    <string name="usb_hint">Development transport · USB reverse tunnel</string>
+</resources>
