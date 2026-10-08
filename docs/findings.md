@@ -1,5 +1,9 @@
 # Findings
 
+- 2026-10-08 — Windows `devspace.cmd` can reference an absent npm bin entrypoint even though the installed `@waishnav/devspace@1.1.0-beta.4` has a working `dist/cli.js`. Both Windows installation/init and scheduled startup must invoke the latter via the bundled Node runtime. The v0.2 worktree now enforces this contract in tests; physical Windows verification is still required.
+- 2026-10-08 — Reinstalling the Windows bundle must stop its own scheduled tasks/private `node.exe` processes before replacing the private runtime; otherwise open executables may prevent in-place replacement. Never target arbitrary system-wide Node processes.
+- 2026-10-08 — macOS LaunchAgent executes a staged runtime under `~/.local/share/codassol-router`, not the active Git checkout. Updating a v0.2 branch alone does not upgrade the running Mac Router. A runtime deployment and protocol-2 peer-info check are required.
+- 2026-10-08 — A Windows Agent registered with the Mac Router may refer to a different Windows machine than the active Windows browser/client. Never infer installation access or device identity from an unrelated Agent registration; verify the actual target before any remote mutation.
 - 2026-10-08 — v0.1.4 still deploys only the Windows Agent; `src/server.js` and routing state reside on the Mac. An offline Mac removes the sole MCP entry point. Peer Router installation and client ingress failover are separate problems; the latter cannot be solved by node-side routing alone.
 - 2026-10-08 — The v0.1.3 Windows installer used `(Get-Content ... -Raw).Trim()` on an intentionally empty public `router-default.txt`; PowerShell 5.1 can return `$null` for that file. The v0.2 installer normalizes to `[string]` before trimming to avoid the original null-method failure.
 

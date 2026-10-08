@@ -2,7 +2,8 @@ $ErrorActionPreference = "Stop"
 
 $InstallRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $NodeDir = Join-Path $InstallRoot "node"
-$DevSpaceCmd = Join-Path $InstallRoot "devspace\node_modules\.bin\devspace.cmd"
+$NodeExe = Join-Path $NodeDir "node.exe"
+$DevSpaceCli = Join-Path $InstallRoot "devspace\node_modules\@waishnav\devspace\dist\cli.js"
 
 $env:PATH = "$NodeDir;$env:PATH"
 
@@ -11,10 +12,13 @@ try {
   exit 0
 } catch {}
 
-if (-not (Test-Path $DevSpaceCmd)) {
-  throw "DevSpace executable is missing: $DevSpaceCmd"
+if (-not (Test-Path $NodeExe)) {
+  throw "Node executable is missing: $NodeExe"
+}
+if (-not (Test-Path $DevSpaceCli)) {
+  throw "DevSpace CLI is missing: $DevSpaceCli"
 }
 
 Set-Location $env:USERPROFILE
-& $DevSpaceCmd serve
+& $NodeExe $DevSpaceCli serve
 exit $LASTEXITCODE

@@ -11,7 +11,7 @@ if (-not (Test-Path $NodeExe) -or -not (Test-Path $RouterScript)) {
   throw "CodasSol Router runtime is missing."
 }
 if (-not (Test-Path $RootsFile)) { throw "CodasSol Router roots file is missing: $RootsFile" }
-$Roots = (Get-Content $RootsFile -Raw).Trim()
+$Roots = ([string](Get-Content $RootsFile -Raw)).Trim()
 if ([string]::IsNullOrWhiteSpace($Roots)) { throw "CodasSol Router roots are empty." }
 
 $env:CODASSOL_STATE_DIR = $StateDir

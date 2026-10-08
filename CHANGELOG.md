@@ -2,6 +2,11 @@
 
 ## v0.2.0-dev — in progress (2026-10-08)
 
+- Unify the Windows v0.2 package with the verified private Node +
+  `@waishnav/devspace/dist/cli.js` startup path, replacing the unreliable
+  npm-generated `devspace.cmd` shim for install, init, and autostart.
+- Stop only CodasSol-managed scheduled tasks/private Node processes before an
+  in-place Windows upgrade, and handle empty Router roots files cleanly.
 - Add opt-in authenticated Router-to-Router peer transport; remote DevSpace
   OAuth credentials remain local to the executing machine.
 - Persist workspace bindings on owner nodes and recover ownership from a
