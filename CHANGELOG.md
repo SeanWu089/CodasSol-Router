@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.2.0-dev — in progress (2026-10-08)
+
+- Add opt-in authenticated Router-to-Router peer transport; remote DevSpace
+  OAuth credentials remain local to the executing machine.
+- Persist workspace bindings on owner nodes and recover ownership from a
+  reachable owner even after the original Router endpoint is offline.
+- Ship a Windows-capable standalone Router runtime and optional Agent
+  enrollment; local Windows routing no longer requires the Mac to be online.
+- Reject offline roots and ambiguous owners instead of silently re-routing
+  operations to a different computer.
+- Client endpoint failover, peer discovery automation, and physical Windows
+  validation remain pending before a stable v0.2 release.
+
 ## v0.1.4 — 2026-10-08
 
 - Added the Android V0 native Router/DevSpace health client and USB debug

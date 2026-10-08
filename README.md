@@ -150,6 +150,12 @@ Wrong-machine execution is worse than an explicit routing error.
 
 ## Network model
 
+> **v0.2 development:** the original Mac-hosted Router remains supported, but
+> independent Router nodes and authenticated peer routing are now under
+> development. See [Distributed routing v0.2](docs/distributed-routing.md)
+> for the explicit Mac-offline behavior and setup boundaries. Do not mistake
+> independent Router nodes for automatic failover of a client URL.
+
 Remote Agents connect **outbound** to the Router.
 
 ```mermaid

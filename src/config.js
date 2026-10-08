@@ -25,6 +25,9 @@ export function loadConfig(env = process.env) {
     stateDir: env.CODASSOL_STATE_DIR,
     localDeviceId: env.CODASSOL_LOCAL_DEVICE_ID || "local",
     localDeviceLabel: env.CODASSOL_LOCAL_DEVICE_LABEL || "Local computer",
-    localRoots: splitRoots(env.CODASSOL_LOCAL_ROOTS)
+    localRoots: splitRoots(env.CODASSOL_LOCAL_ROOTS),
+    peersFile: env.CODASSOL_PEERS_FILE || null,
+    allowInsecurePeers: env.CODASSOL_ALLOW_INSECURE_PEERS === "1",
+    peerProbeIntervalMs: Number.parseInt(env.CODASSOL_PEER_PROBE_INTERVAL_MS || "10000", 10)
   };
 }

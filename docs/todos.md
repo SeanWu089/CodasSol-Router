@@ -1,5 +1,8 @@
 # Todos
 
+- v0.2: [in progress] Independent Router node on Windows and macOS, trusted peer discovery, peer execution, owner-side bindings, and a Mac-offline failover integration test.
+- v0.2 next: optional stable client ingress, automated node discovery/reachability, and peer-token rotation/revocation before Internet-facing use.
+
 - Add CI regression coverage that builds the Windows public bundle and asserts no private Router address is embedded.
 - Add a reproducible end-to-end remote `open_workspace` integration test with a follow-up workspace-bound operation.
 - Add release automation that generates checksums and validates bundle contents before publishing.

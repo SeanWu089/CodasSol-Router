@@ -46,13 +46,19 @@ export class RouterPrivateState {
       this.#state = {
         version: 1,
         pairingToken: parsed.pairingToken,
+        peerToken: typeof parsed.peerToken === "string" && parsed.peerToken.length >= 32
+          ? parsed.peerToken : randomSecret(),
         agents: parsed.agents && typeof parsed.agents === "object" ? parsed.agents : {}
       };
+      if (typeof parsed.peerToken !== "string" || parsed.peerToken.length < 32) {
+        await this.#persist();
+      }
     } catch (error) {
       if (error?.code !== "ENOENT") throw error;
       this.#state = {
         version: 1,
         pairingToken: randomSecret(),
+        peerToken: randomSecret(),
         agents: {}
       };
       await this.#persist();
@@ -63,6 +69,16 @@ export class RouterPrivateState {
   get pairingToken() {
     if (!this.#state) throw new Error("RouterPrivateState.init() must be called first");
     return this.#state.pairingToken;
+  }
+
+  get peerToken() {
+    if (!this.#state) throw new Error("RouterPrivateState.init() must be called first");
+    return this.#state.peerToken;
+  }
+
+  verifyPeerToken(token) {
+    if (!this.#state || typeof token !== "string" || !token) return false;
+    return equalSecretHashes(hashSecret(token), hashSecret(this.#state.peerToken));
   }
 
   listAgents() {

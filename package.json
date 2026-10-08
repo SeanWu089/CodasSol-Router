@@ -1,6 +1,6 @@
 {
   "name": "codassol-router",
-  "version": "0.1.4",
+  "version": "0.2.0-dev",
   "description": "Transparent workspace routing for AI agents across physical machines.",
   "private": true,
   "license": "MIT",
@@ -10,6 +10,7 @@
     "start": "node src/server.js",
     "router:init": "node src/router-cli.js init",
     "router:pairing-token": "node src/router-cli.js pairing-token",
+    "router:peer-token": "node src/router-cli.js peer-token",
     "router:agents": "node src/router-cli.js agents",
     "router:lan": "node src/router-cli.js lan",
     "agent": "node src/agent.js run",

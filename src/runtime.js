@@ -5,6 +5,8 @@ import { DeviceRegistry } from "./device-registry.js";
 import { defaultStateDir, RouterPrivateState } from "./private-state.js";
 import { RoutingPolicy } from "./routing-policy.js";
 import { WorkspaceBindingStore } from "./workspace-bindings.js";
+import { PeerMesh } from "./peer-mesh.js";
+import { createRouterPeerOAuth } from "./router-peer-oauth.js";
 
 export async function createRouterRuntime(config, {
   clock = () => Date.now(),
@@ -35,14 +37,17 @@ export async function createRouterRuntime(config, {
   });
   await bindings.load();
 
-  return {
+  const runtime = {
     stateDir,
     privateState,
     devices,
     bindings,
     routing: new RoutingPolicy({ devices, bindings }),
     agentHub: new AgentHub(),
-    localDeviceId: config.localDeviceId || "local"
+    localDeviceId: config.localDeviceId || "local",
+    peerOAuth: await createRouterPeerOAuth(config, stateDir)
   };
+  runtime.peerMesh = await PeerMesh.load(runtime, config);
+  return runtime;
 }
 

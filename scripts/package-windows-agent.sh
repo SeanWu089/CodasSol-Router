@@ -66,9 +66,9 @@ fi
 mv "$NODE_EXTRACTED" "$PAYLOAD_DIR/node"
 rm -rf "$TMP_NODE"
 
-cp "$REPO_DIR/src/agent.js" "$PAYLOAD_DIR/app/"
-cp "$REPO_DIR/src/agent-config.js" "$PAYLOAD_DIR/app/"
-cp "$REPO_DIR/src/devspace-local-auth.js" "$PAYLOAD_DIR/app/"
+# Bundle both the Agent and the independent Router: no source checkout is
+# required on Windows, and no deployment credentials are embedded in the ZIP.
+cp "$REPO_DIR"/src/*.js "$PAYLOAD_DIR/app/"
 cat > "$PAYLOAD_DIR/app/package.json" <<'JSON'
 {
   "name": "codassol-windows-agent-runtime",
@@ -79,6 +79,7 @@ JSON
 
 cp "$REPO_DIR/scripts/windows/runtime/start-devspace.ps1" "$PAYLOAD_DIR/runtime/"
 cp "$REPO_DIR/scripts/windows/runtime/start-agent.ps1" "$PAYLOAD_DIR/runtime/"
+cp "$REPO_DIR/scripts/windows/runtime/start-router.ps1" "$PAYLOAD_DIR/runtime/"
 cp "$REPO_DIR/scripts/windows/runtime/configure-devspace-root.mjs" "$PAYLOAD_DIR/runtime/"
 cp "$REPO_DIR/scripts/windows/bundle/INSTALL.cmd" "$BUILD_DIR/"
 cp "$REPO_DIR/scripts/windows/bundle/install.ps1" "$BUILD_DIR/"
@@ -95,13 +96,14 @@ else
 fi
 
 cat > "$BUILD_DIR/README-WINDOWS.txt" <<'TXT'
-CodasSol Windows Agent
-======================
+CodasSol Windows Router + Agent (v0.2 development)
+===================================================
 
 1. Extract this ZIP to a normal folder.
 2. Double-click INSTALL.cmd.
 3. If DevSpace is being initialized for the first time, choose "Coding Agents".
-4. Paste the pairing token shown on the Mac Router when prompted.
+4. You can select local-only operation: no Mac or remote Router needed.
+5. Optionally enroll the Agent with another online Router using its one-time pairing token.
 
 The installer:
 - uses the bundled private Node 22 runtime;
@@ -109,10 +111,13 @@ The installer:
 - does not modify global Node/npm configuration;
 - installs DevSpace only under %LOCALAPPDATA%\CodasSol\Agent;
 - tries npmmirror first, then existing npm/proxy settings, then official npm;
-- verifies Node, DevSpace, Router reachability, Agent config, and autostart tasks;
-- stores private Agent credentials only in %USERPROFILE%\.codassol\agent.json.
+- installs an independent Router at http://127.0.0.1:17676;
+- creates a Router autostart task, plus Agent autostart when enrolled;
+- verifies Node, DevSpace, local Router and autostart tasks;
+- stores private Router/Agent credentials only under %USERPROFILE%\.codassol\.
 
-Do not share the pairing token or .codassol\agent.json.
+To configure authenticated Router peers, see docs in the project repository.
+Do not share pairing or peer tokens or your .codassol private files.
 TXT
 
 (
@@ -120,7 +125,12 @@ TXT
   zip -q -r -X "CodasSol-Windows-Agent.zip" "CodasSol-Windows-Agent"
 )
 
+# Keep the legacy asset name for existing installers, and ship an explicitly
+# marked development node bundle that includes the independent Router.
+cp "$DIST_DIR/CodasSol-Windows-Agent.zip" "$DIST_DIR/CodasSol-Windows-Node-v0.2.0-dev.zip"
+
 echo "Built: $DIST_DIR/CodasSol-Windows-Agent.zip"
+echo "Built: $DIST_DIR/CodasSol-Windows-Node-v0.2.0-dev.zip"
 if [[ -s "$BUILD_DIR/router-default.txt" ]]; then
   echo "Default Router URL: $(cat "$BUILD_DIR/router-default.txt")"
 else

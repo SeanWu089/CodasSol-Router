@@ -97,6 +97,22 @@ test("matching heartbeat device fails closed after it goes offline", () => {
   );
 });
 
+test("offline specific project root cannot fall back to another machine's broader root", () => {
+  const fixture = makePolicy({ ttl: 500 });
+  fixture.devices.register({
+    id: "windows-local", platform: "win32", presence: "static", roots: ["C:\\Users"]
+  });
+  fixture.devices.register({
+    id: "windows-away", platform: "win32", presence: "heartbeat",
+    roots: ["C:\\Users\\Example\\Project"]
+  });
+  fixture.advance(501);
+  assert.throws(
+    () => fixture.policy.resolveOpenWorkspace({ path: "C:\\Users\\Example\\Project\\src" }),
+    (error) => error.code === "DEVICE_OFFLINE"
+  );
+});
+
 test("single online device remains a backward-compatible fallback", () => {
   const { devices, policy } = makePolicy();
   devices.register({

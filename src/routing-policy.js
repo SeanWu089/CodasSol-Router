@@ -37,31 +37,26 @@ export class RoutingPolicy {
     }
 
     const matches = this.devices.matchPath(path);
-    const onlineMatches = matches.filter((match) => match.device.online);
-    if (onlineMatches.length > 0) {
-      const bestSpecificity = onlineMatches[0].specificity;
-      const best = onlineMatches.filter((match) => match.specificity === bestSpecificity);
+    if (matches.length) {
+      // An offline *more specific* root cannot be silently replaced by an
+      // online broader root (or an equally specific other machine).
+      // Ownership is determined before health, never the other way round.
+      const best = matches.filter((match) => match.specificity === matches[0].specificity);
       const deviceIds = [...new Set(best.map((match) => match.device.id))];
-      if (deviceIds.length === 1) {
-        return best[0].device;
+      if (deviceIds.length > 1) {
+        throw new RoutingDecisionError(
+          "AMBIGUOUS_DEVICE",
+          "Multiple devices claim this workspace root, including offline nodes",
+          { deviceIds, path }
+        );
       }
-      throw new RoutingDecisionError(
-        "AMBIGUOUS_DEVICE",
-        "Multiple online devices match this workspace path",
-        { deviceIds, path }
-      );
-    }
-
-    const offlineMatches = matches.filter((match) => !match.device.online);
-    if (offlineMatches.length > 0) {
-      throw new RoutingDecisionError(
-        "DEVICE_OFFLINE",
-        "The matching device is offline",
-        {
-          deviceIds: [...new Set(offlineMatches.map((match) => match.device.id))],
-          path
-        }
-      );
+      if (!best[0].device.online) {
+        throw new RoutingDecisionError(
+          "DEVICE_OFFLINE", "The owning device is offline",
+          { deviceIds, path }
+        );
+      }
+      return best[0].device;
     }
 
     const onlineDevices = this.devices.list({ onlineOnly: true });
