@@ -10,9 +10,13 @@ enum RouterAddressPolicy {
         let host = rawHost.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
         if host == "localhost" || (host.hasSuffix(".local") && host.count > 6) { return true }
 
-        var ipv4 = in_addr()
-        if host.withCString({ inet_pton(AF_INET, $0, &ipv4) }) == 1 {
-            return withUnsafeBytes(of: ipv4) { isPrivateIPv4(Array($0)) }
+        if !host.contains(":") {
+            guard let bytes = parseIPv4(host) else { return false }
+            return isPrivateIPv4(bytes)
+        }
+        if host.contains(".") {
+            guard let tail = host.split(separator: ":").last,
+                  parseIPv4(String(tail)) != nil else { return false }
         }
 
         // Parse IPv6 before examining its prefix: fd.example.com is a public
@@ -27,6 +31,16 @@ enum RouterAddressPolicy {
             return isPrivateIPv4(Array(bytes.suffix(4)))
         }
         return false
+    }
+
+    private static func parseIPv4(_ host: String) -> [UInt8]? {
+        let parts = host.split(separator: ".", omittingEmptySubsequences: false)
+        guard parts.count == 4, parts.allSatisfy({ part in
+            !part.isEmpty && part.utf8.allSatisfy({ (48...57).contains($0) }) &&
+                (part.count == 1 || part.first != "0")
+        }) else { return nil }
+        let bytes = parts.compactMap { UInt8($0) }
+        return bytes.count == 4 ? bytes : nil
     }
 
     private static func isPrivateIPv4(_ bytes: [UInt8]) -> Bool {

@@ -53,6 +53,6 @@ npm run router:pairing-token --silent
 node --test test/*.test.js mobile/ipados/tests/*.test.mjs  # 从仓库根目录
 ```
 
-macOS runner 还会运行 30 个地址校验用例与完整 Xcode Release 构建。请以该提交对应的 Actions 结果为准；Linux 环境中的 Node 测试不能证明 iPad 原生程序已经编译或真机连接成功。
+macOS runner 还会运行 31 个地址校验用例与完整 Xcode Release 构建。请以该提交对应的 Actions 结果为准；Linux 环境中的 Node 测试不能证明 iPad 原生程序已经编译或真机连接成功。
 
 蓝色应用图标与 Mac 菜单栏黑白图标分别维护。

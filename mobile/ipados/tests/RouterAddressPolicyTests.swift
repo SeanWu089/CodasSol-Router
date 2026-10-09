@@ -8,7 +8,8 @@ struct RouterAddressPolicyTests {
                        "fc00::1", "fe80::1", "febf::1", "::ffff:192.168.1.10"]
         let denied = ["fd.example.com", "fc.example.com", "example.com", "fd", "fd12::oops",
                       "192.168.999.1", "010.0.0.1", "172.15.0.1", "172.32.0.1", "8.8.8.8",
-                      "192.168.1.10.example.com", "2001:db8::1", "::", "fec0::1", "::ffff:8.8.8.8"]
+                      "192.168.1.10.example.com", "2001:db8::1", "::", "fec0::1", "::ffff:8.8.8.8",
+                      "::ffff:010.0.0.1"]
         for host in allowed {
             precondition(RouterAddressPolicy.isPrivateHost(host), "Expected a local address: \(host)")
         }
