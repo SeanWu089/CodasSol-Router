@@ -18,8 +18,8 @@ cat > "$DEST/Contents/Info.plist" <<'PLIST'
 <key>CFBundleIdentifier</key><string>com.codassol.mac</string>
 <key>CFBundleName</key><string>CodasSol-mac</string>
 <key>CFBundleDisplayName</key><string>CodasSol-mac</string>
-<key>CFBundleShortVersionString</key><string>0.2.0</string>
-<key>CFBundleVersion</key><string>2</string>
+<key>CFBundleShortVersionString</key><string>0.2.1</string>
+<key>CFBundleVersion</key><string>3</string>
 <key>CFBundleIconFile</key><string>CodasSol</string>
 <key>CFBundleExecutable</key><string>CodasSolMac</string>
 <key>CFBundlePackageType</key><string>APPL</string>
