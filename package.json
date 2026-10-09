@@ -14,7 +14,7 @@
     "router:lan": "node src/router-cli.js lan",
     "agent": "node src/agent.js run",
     "test": "node --test",
-    "test:mac": "zsh test/mac/menu-app.test.sh && zsh test/mac/launchagent.test.sh"
+    "test:mac": "zsh test/mac/menu-app.test.sh && zsh test/mac/launchagent.test.sh && /usr/bin/python3 -m unittest discover -s test/mac -p 'test_*.py' -v"
   },
   "engines": {
     "node": ">=22"

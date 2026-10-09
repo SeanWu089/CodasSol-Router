@@ -13,6 +13,8 @@
 - [x] Build a minimal macOS menu bar UI that independently probes DevSpace and Router health and offers start/stop for menu-managed DevSpace only.
 - [ ] Test a fresh start/stop cycle with no pre-existing DevSpace process; preserve the presently active live connection until a safe test window.
 - [ ] Add optional Login Items registration, error details/log viewing, and a packaged signed release after first-pass user feedback.
-- [ ] Safely migrate independently started DevSpace to a managed background service so CodasSol-mac can truly control connection on/off without leaving terminal-launched sessions unmanaged. Confirm an interruption window before any restart.
+- [x] Safely migrate externally started DevSpace to a managed macOS LaunchAgent with an independent migration worker, watchdog, and legacy rescue fallback. Completed after notifying the user of the expected brief interruption.
 - [x] v0.2 pre-migration: build a stable location-independent DevSpace helper with package/Node fallback discovery and guarded LaunchAgent lifecycle, improve status diagnostics and icon opacity, and exercise path-failure regression tests.
-- [ ] Verify the managed LaunchAgent start/stop and startup-on-login behavior in a safe test environment before the one-time production cutover.
+- [x] Verify a LaunchAgent start/stop cycle with an isolated mock DevSpace service and an app-independent startup helper prior to physical migration.
+- [x] Execute the live one-time migration using the independent launchd worker and confirm the new managed PID and Router backend health; no fallback was needed.
+- [ ] At a separately announced maintenance window, verify the real GUI-controlled Stop/Start cycle and a clean macOS login/reboot. Isolated LaunchAgent tests have passed, but full physical reboot behavior is not yet verified.

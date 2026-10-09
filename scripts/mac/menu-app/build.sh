@@ -7,6 +7,7 @@ mkdir -p "$DEST/Contents/Resources"
 swiftc "$ROOT/main.swift" "$ROOT/DevSpaceManager.swift" -O -o "$DEST/Contents/MacOS/CodasSolMac"
 cp "$ROOT/SeanTemplate.png" "$DEST/Contents/Resources/SeanTemplate.png"
 cp "$ROOT/devspace-runner.zsh" "$DEST/Contents/Resources/devspace-runner.zsh"
+cp "$ROOT/migrate-devspace.py" "$DEST/Contents/Resources/migrate-devspace.py"
 # Icons are bundled source assets: moving sean.PNG or the application itself
 # must not break fresh builds or the background launcher.
 cp "$ROOT/CodasSol.icns" "$DEST/Contents/Resources/CodasSol.icns"
