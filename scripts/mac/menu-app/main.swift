@@ -8,8 +8,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let router = NSMenuItem(title: "Router: checking…", action: nil, keyEquivalent: "")
     private let start = NSMenuItem(title: "Start DevSpace", action: #selector(startDev), keyEquivalent: "")
     private let stop = NSMenuItem(title: "Stop DevSpace", action: #selector(stopDev), keyEquivalent: "")
+    private let diagnose = NSMenuItem(title: "Check startup configuration", action: #selector(diagnoseStartup), keyEquivalent: "")
     private let feedback = NSMenuItem(title: "", action: nil, keyEquivalent: "")
-    private let label = "com.codassol.devspace.menu"
+    private let manager = DevSpaceManager()
     private var timer: Timer?
     private var busy = false
 
@@ -35,11 +36,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    private var agentURL: URL {
-        FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/LaunchAgents/\(label).plist")
-    }
-
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -60,9 +56,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(.separator())
         start.target = self
         stop.target = self
+        diagnose.target = self
         menu.addItem(start)
         menu.addItem(stop)
+        menu.addItem(diagnose)
         menu.addItem(.separator())
+        feedback.isEnabled = true
         menu.addItem(feedback)
         menu.addItem(NSMenuItem(title: "Quit menu app", action: #selector(quit), keyEquivalent: "q"))
         menu.items.last?.target = self
@@ -70,55 +69,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in self?.refresh() }
     }
 
-    private func alive(_ port: Int, path: String) -> Bool {
+    private func health(_ port: Int, path: String) -> (online: Bool, backend: Bool) {
         let sem = DispatchSemaphore(value: 0)
         var success = false
+        var backend = false
         var request = URLRequest(url: URL(string: "http://127.0.0.1:\(port)\(path)")!)
         request.timeoutInterval = 1.5
         URLSession.shared.dataTask(with: request) { data, response, _ in
             if let http = response as? HTTPURLResponse, http.statusCode == 200,
                let data, let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
                 success = json["ok"] as? Bool == true
+                backend = json["backendReachable"] as? Bool ?? success
             }
             sem.signal()
         }.resume()
         _ = sem.wait(timeout: .now() + 2)
-        return success
-    }
-
-    private func launch(_ arguments: [String]) -> (Int32, String) {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
-        process.arguments = arguments
-        let pipe = Pipe()
-        process.standardError = pipe
-        process.standardOutput = pipe
-        do {
-            try process.run()
-            process.waitUntilExit()
-            let output = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-            return (process.terminationStatus, output)
-        } catch { return (-1, error.localizedDescription) }
-    }
-
-    private func isManaged() -> Bool {
-        launch(["print", "gui/\(getuid())/\(label)"]).0 == 0
+        return (success, backend)
     }
 
     private func refresh() {
         guard !busy else { return }
         DispatchQueue.global(qos: .utility).async {
-            let devOK = self.alive(7676, path: "/healthz")
-            let routerOK = self.alive(17676, path: "/_codassol/health")
-            let managed = self.isManaged()
+            let devOK = self.health(7676, path: "/healthz").online
+            let routerHealth = self.health(17676, path: "/_codassol/health")
+            let managed = self.manager.isManaged()
             DispatchQueue.main.async {
                 self.dev.attributedTitle = self.statusText("DevSpace", online: devOK, detail: devOK && !managed ? "Externally started" : "")
-                self.router.attributedTitle = self.statusText("Router", online: routerOK)
-                self.item.button?.alphaValue = devOK ? 1 : 0.45
+                self.router.attributedTitle = self.statusText("Router", online: routerHealth.online, detail: routerHealth.online && !routerHealth.backend ? "Backend unreachable" : "")
+                self.item.button?.alphaValue = devOK && routerHealth.online && routerHealth.backend ? 1 : 0.45
                 self.start.isEnabled = !devOK
                 self.stop.isEnabled = devOK && managed
-                if devOK && !managed { self.feedback.title = "DevSpace is running outside this app" }
-                else if !self.feedback.title.hasPrefix("Error:") { self.feedback.title = "" }
+                let info = self.feedback.title
+                if info.isEmpty || info == "DevSpace is running outside this app" {
+                    self.feedback.title = devOK && !managed ? "DevSpace is running outside this app" : ""
+                }
             }
         }
     }
@@ -126,7 +110,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func menuWillOpen(_ menu: NSMenu) { refresh() }
 
     private func showError(_ message: String) {
-        DispatchQueue.main.async { self.feedback.title = "Error: \(message.prefix(110))" }
+        let clean = message.replacingOccurrences(of: "\n", with: " ")
+        DispatchQueue.main.async { self.feedback.title = "Error: \(clean.prefix(110))" }
     }
 
     @objc private func startDev() {
@@ -134,32 +119,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         busy = true
         feedback.title = "Starting…"
         DispatchQueue.global(qos: .userInitiated).async {
-            if self.alive(7676, path: "/healthz") { self.complete(); return }
-            let home = FileManager.default.homeDirectoryForCurrentUser.path
-            let executable = "\(home)/.local/npm-global/bin/devspace"
-            guard FileManager.default.isExecutableFile(atPath: executable) else {
-                self.showError("DevSpace executable missing: \(executable)")
-                self.complete(); return
+            // This check prevents duplicate servers and accidental port conflicts.
+            if self.health(7676, path: "/healthz").online { self.complete(); return }
+            let result = self.manager.start()
+            if result.code != 0 { self.showError(result.output.trimmingCharacters(in: .whitespacesAndNewlines)) }
+            else {
+                // launchctl bootstrap success is not proof that DevSpace has actually started.
+                var healthy = false
+                for _ in 0..<25 {
+                    if self.health(7676, path: "/healthz").online { healthy = true; break }
+                    Thread.sleep(forTimeInterval: 0.3)
+                }
+                if !healthy { self.showError("Managed DevSpace did not become healthy. See ~/Library/Logs/CodasSol-mac-DevSpace.log") }
             }
-            let log = "\(home)/Library/Logs/CodasSol-DevSpace.log"
-            let plist: [String: Any] = [
-                "Label": self.label,
-                "ProgramArguments": [executable, "serve"],
-                "EnvironmentVariables": ["PATH": "\(home)/.local/share/fnm/aliases/default/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"],
-                "RunAtLoad": true,
-                "KeepAlive": false,
-                "StandardOutPath": log,
-                "StandardErrorPath": log
-            ]
-            do {
-                let directory = self.agentURL.deletingLastPathComponent()
-                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-                let data = try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
-                try data.write(to: self.agentURL, options: .atomic)
-            } catch { self.showError(error.localizedDescription); self.complete(); return }
-            if self.isManaged() { _ = self.launch(["bootout", "gui/\(getuid())/\(self.label)"]) }
-            let result = self.launch(["bootstrap", "gui/\(getuid())", self.agentURL.path])
-            if result.0 != 0 { self.showError(result.1.trimmingCharacters(in: .whitespacesAndNewlines)) }
             self.complete()
         }
     }
@@ -169,10 +141,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         busy = true
         feedback.title = "Stopping…"
         DispatchQueue.global(qos: .userInitiated).async {
-            guard self.isManaged() else { self.showError("Not a menu-managed process"); self.complete(); return }
-            let result = self.launch(["bootout", "gui/\(getuid())/\(self.label)"])
-            if result.0 != 0 { self.showError(result.1.trimmingCharacters(in: .whitespacesAndNewlines)) }
+            let result = self.manager.stop()
+            if result.code != 0 { self.showError(result.output.trimmingCharacters(in: .whitespacesAndNewlines)) }
             self.complete()
+        }
+    }
+
+    @objc private func diagnoseStartup() {
+        guard !busy else { return }
+        busy = true
+        feedback.title = "Checking…"
+        DispatchQueue.global(qos: .userInitiated).async {
+            let result = self.manager.diagnostic()
+            if result.code != 0 { self.showError(result.output.trimmingCharacters(in: .whitespacesAndNewlines)) }
+            else { DispatchQueue.main.async { self.feedback.title = "Startup configuration: ready" } }
+            DispatchQueue.main.async { self.busy = false }
         }
     }
 

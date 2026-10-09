@@ -14,3 +14,5 @@
 - [ ] Test a fresh start/stop cycle with no pre-existing DevSpace process; preserve the presently active live connection until a safe test window.
 - [ ] Add optional Login Items registration, error details/log viewing, and a packaged signed release after first-pass user feedback.
 - [ ] Safely migrate independently started DevSpace to a managed background service so CodasSol-mac can truly control connection on/off without leaving terminal-launched sessions unmanaged. Confirm an interruption window before any restart.
+- [x] v0.2 pre-migration: build a stable location-independent DevSpace helper with package/Node fallback discovery and guarded LaunchAgent lifecycle, improve status diagnostics and icon opacity, and exercise path-failure regression tests.
+- [ ] Verify the managed LaunchAgent start/stop and startup-on-login behavior in a safe test environment before the one-time production cutover.
