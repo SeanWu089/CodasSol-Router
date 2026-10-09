@@ -1,0 +1,55 @@
+name: Build CodasSol iPad IPA (no local Xcode)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'feat/ipados-cloud-build'
+      - 'main'
+    paths:
+      - '.github/workflows/build-ipad.yml'
+      - 'mobile/ipados/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ipad-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Verify Router control API
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test test/*.test.js mobile/ipados/tests/*.test.mjs
+
+  ipa:
+    name: Compile unsigned iPad IPA
+    needs: verify
+    runs-on: macos-26
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show compiler version
+        run: xcodebuild -version
+      - name: Verify local network address policy
+        run: |
+          swiftc mobile/ipados/CodasSolController/RouterAddressPolicy.swift \
+            mobile/ipados/tests/RouterAddressPolicyTests.swift \
+            -o "$RUNNER_TEMP/router-address-tests"
+          "$RUNNER_TEMP/router-address-tests"
+      - name: Compile iPadOS app without local Xcode or signing secrets
+        run: bash mobile/ipados/scripts/cloud-build-ipa.sh
+      - name: Upload unsigned IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: CodasSol-iPad-unsigned-IPA
+          path: mobile/ipados/dist/CodasSol-iPad-Controller-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 14

@@ -1,0 +1,12 @@
+.DS_Store
+DerivedData/
+build/
+*.ipa
+*.xcarchive
+*.mobileprovision
+*.p12
+*.pem
+*.key
+controllers.json
+.env
+*.log
