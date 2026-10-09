@@ -342,3 +342,11 @@ MIT.
 ### **Route the Project, Not Devices.**
 
 </div>
+
+## macOS menu bar controller (experimental)
+
+Build and install the native Swift/AppKit menu app with `zsh scripts/mac/menu-app/build.sh` (default destination: `~/Applications/CodasSol-mac.app`). Launch it from Finder or `open -a "$HOME/Applications/CodasSol-mac.app"`. The menu independently checks local DevSpace (`127.0.0.1:7676/healthz`) and Router (`127.0.0.1:17676/_codassol/health`). It can bootstrap and stop only its own `com.codassol.devspace.menu` LaunchAgent. An existing DevSpace launched outside the app is labeled **Externally started** and will not be stopped, to avoid breaking active sessions. The Router's existing LaunchAgent is observed but never changed. The service binary is expected at `~/.local/npm-global/bin/devspace`; this first version targets the current Mac installation and has not yet been tested with a clean-service start/stop cycle.
+
+The menu app status item uses a monochrome macOS template icon derived from the local `sean.PNG` avatar, bundled as `scripts/mac/menu-app/SeanTemplate.png`. For local upgrades, rebuild and relaunch the menu app; server restart is not required.
+
+The installed macOS app is named **CodasSol-mac.app**, has a full-color avatar Finder icon derived from `sean.PNG`, and uses a 21-point monochrome template icon for the menu bar.

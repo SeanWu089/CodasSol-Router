@@ -14,3 +14,8 @@
   placeholders.
 - 2026-09-30 — A live end-to-end test routed from the Mac Router into a Windows Desktop workspace and moved a desktop shortcut to the Windows Recycle Bin.
 - 2026-09-30 — A later live session exposed a resilience gap: the Windows Agent heartbeat remained online while its local DevSpace backend became unreachable. The Router could still list the device but remote tool calls failed with an Agent-side fetch error. Device presence and execution-backend health must be tracked separately.
+
+- 2026-10-09 — On the Mac, DevSpace responds at `127.0.0.1:7676/healthz`, while the Router responds at `127.0.0.1:17676/_codassol/health` with separate `backendReachable`. Existing DevSpace is an interactive process, and Router is already managed by `com.codassol.router` LaunchAgent. A menu controller must not kill pre-existing DevSpace or Router processes.
+- 2026-10-09 — Reused the transparent `sean.PNG` found under Desktop-Air/seanworkspace/media/images. The menu bar now uses a monochrome NSImage template at 18×18 points, with native dark/light appearance adaptation; only the menu-app bundle is rebuilt, no server restart.
+- 2026-10-09 — Renamed the macOS application to CodasSol-mac, now with a color Dock/Finder icon generated from the original `sean.PNG` and a larger 21-point monochrome menu template icon. Menu opening requests an immediate health refresh. The old application was moved to Trash reversibly, with existing DevSpace/Router services left running.
+- 2026-10-09 — Native NSMenu auto-disables items with nil actions, making otherwise healthy status rows appear grey. Set `menu.autoenablesItems = false`, mark information rows enabled, and render health as green/red attributed status text. This avoids falsely implying offline status.
