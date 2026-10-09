@@ -176,11 +176,25 @@ async function handlePeerRoute(req, res, config, runtime) {
   if (req.url === "/_codassol/peer/info" && req.method === "GET") {
     const local = runtime.devices.get(runtime.localDeviceId);
     sendJson(res, 200, {
-      protocol: 2, id: runtime.localDeviceId,
-      label: local.label, platform: local.platform, roots: local.roots,
+      protocol: 2, catalogVersion: 1, id: runtime.localDeviceId,
+      installationId: runtime.privateState.installationId,
+      label: runtime.catalog.get(runtime.localDeviceId)?.name || local.label,
+      platform: local.platform, roots: local.roots,
       backendReachable: await probeBackend(config)
     });
     return true;
+  }
+  if (req.url === "/_codassol/peer/catalog") {
+    if (req.method === "GET") {
+      sendJson(res, 200, runtime.catalog.snapshot());
+      return true;
+    }
+    if (req.method === "POST") {
+      const snapshot = await readJsonBody(req, { maxBytes: 512_000 });
+      const changed = await runtime.catalog.merge(snapshot);
+      sendJson(res, 200, { ok: true, changed });
+      return true;
+    }
   }
   if (req.url.startsWith("/_codassol/peer/binding?") && req.method === "GET") {
     const id = new URL(req.url, "http://localhost").searchParams.get("workspace_id");
@@ -228,6 +242,68 @@ async function handlePeerRoute(req, res, config, runtime) {
     return true;
   }
   sendJson(res, 404, { error: "peer_route_not_found" });
+  return true;
+}
+
+async function handleDeviceRoute(req, res, config, runtime) {
+  if (!runtime || !req.url?.startsWith("/_codassol/devices")) return false;
+  if (!runtime.privateState.verifyAdminToken(bearerToken(req))) {
+    sendJson(res, 401, { error: "invalid_admin_token" });
+    return true;
+  }
+  if (req.url === "/_codassol/devices" && req.method === "GET") {
+    const localBackend = await probeBackend(config);
+    const devices = runtime.catalog.list().map((entry) => {
+      const routing = runtime.devices.get(entry.id);
+      const local = entry.id === runtime.localDeviceId;
+      const peer = runtime.peerMesh?.peers.has(entry.id);
+      const health = peer ? runtime.peerMesh.peerHealth.get(entry.id) : null;
+      const status = local
+        ? (localBackend ? "online" : "degraded")
+        : peer && health?.reachable && !health.backendReachable
+          ? "degraded"
+          : routing?.online ? "online"
+            : routing || peer || entry.kind === "agent" ? "offline" : "unknown";
+      return {
+        id: entry.id,
+        installationId: entry.installationId,
+        name: entry.name,
+        platform: entry.platform,
+        kind: entry.kind,
+        isThisDevice: local,
+        status,
+        online: status === "online",
+        backendReachable: local ? localBackend : peer ? health?.backendReachable === true
+          : routing?.online === true,
+        lastSeenAt: local ? Date.now() : peer ? (health?.lastOnlineAt ?? null)
+          : routing?.lastSeenAt ?? null,
+        revision: entry.rename?.revision ?? null
+      };
+    });
+    devices.sort((a, b) => Number(b.isThisDevice) - Number(a.isThisDevice) ||
+      a.name.localeCompare(b.name, "en"));
+    sendJson(res, 200, { version: 1, localDeviceId: runtime.localDeviceId, devices });
+    return true;
+  }
+
+  if (req.url.startsWith("/_codassol/devices/") && req.method === "PATCH") {
+    const suffix = req.url.slice("/_codassol/devices/".length);
+    if (!suffix || suffix.includes("/") || suffix.includes("?") || suffix.includes("#")) {
+      sendJson(res, 400, { error: "invalid_device_id" });
+      return true;
+    }
+    const id = decodeURIComponent(suffix);
+    const body = await readJsonBody(req, { maxBytes: 2048 });
+    const device = await runtime.catalog.rename(id, body?.name);
+    if (!device) {
+      sendJson(res, 404, { error: "device_not_registered" });
+      return true;
+    }
+    const sync = await runtime.peerMesh?.publishCatalog() || { attempted: 0, delivered: 0 };
+    sendJson(res, 200, { ok: true, device: { id: device.id, name: device.name }, sync });
+    return true;
+  }
+  sendJson(res, 405, { error: "device_route_not_found" });
   return true;
 }
 
@@ -283,11 +359,18 @@ async function handleAgentRoute(req, res, runtime) {
       return true;
     }
     const body = await readJsonBody(req);
-    if (body.id === runtime.localDeviceId || runtime.peerMesh?.peers.has(body.id)) {
+    if (body.id === runtime.localDeviceId || runtime.peerMesh?.peers.has(body.id) ||
+        (runtime.catalog.get(body.id) && !runtime.privateState.getAgent(body.id))) {
       sendJson(res, 409, { error: "device_id_reserved_by_router_node" });
       return true;
     }
     const enrolled = await runtime.privateState.enrollAgent(body);
+    await runtime.catalog.observe({
+      id: enrolled.agent.id,
+      defaultName: enrolled.agent.label,
+      platform: enrolled.agent.platform,
+      kind: "agent"
+    });
     runtime.devices.register({
       id: enrolled.agent.id,
       label: enrolled.agent.label,
@@ -354,6 +437,15 @@ export function createRouterServer(config = loadConfig(), runtime = null) {
     } catch (error) {
       sendJson(res, 502, {
         error: "peer_request_failed",
+        message: error instanceof Error ? error.message : String(error)
+      });
+      return;
+    }
+    try {
+      if (await handleDeviceRoute(req, res, config, runtime)) return;
+    } catch (error) {
+      sendJson(res, 400, {
+        error: "device_request_failed",
         message: error instanceof Error ? error.message : String(error)
       });
       return;

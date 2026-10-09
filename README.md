@@ -339,6 +339,8 @@ Local Router state belongs under `~/.codassol/`. Windows Agent state belongs und
 
 ---
 
+**Experimental Device Registry v1:** See [the device directory and authenticated rename API](docs/distributed-routing.md#device-registry-v1-experimental-api) for cross-node discovery, stable installation identity, peer metadata synchronization and offline display semantics.
+
 ## License
 
 MIT.

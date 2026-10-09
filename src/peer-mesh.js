@@ -15,6 +15,11 @@ function validatePeer(input, localDeviceId, allowInsecurePeers) {
   if (typeof token !== "string" || token.length < 32) {
     throw new Error(`Peer ${id} must have a private bearer token of at least 32 characters`);
   }
+  if (input.installationId !== undefined &&
+      (typeof input.installationId !== "string" || !input.installationId.trim() ||
+       input.installationId.length > 128)) {
+    throw new Error(`Peer ${id} has an invalid installationId`);
+  }
   if (!Array.isArray(roots) || !roots.every((root) => typeof root === "string" && root.trim())) {
     throw new Error(`Peer ${id} has invalid roots`);
   }
@@ -30,6 +35,7 @@ function validatePeer(input, localDeviceId, allowInsecurePeers) {
   }
   return {
     id, token, url: url.origin,
+    installationId: input.installationId || null,
     platform: platform || "unknown",
     label: input.label || id,
     roots: [...new Set(roots)]
@@ -72,6 +78,7 @@ export class PeerMesh {
     this.fetchFn = fetchFn;
     this.probeIntervalMs = probeIntervalMs;
     this.peers = new Map();
+    this.peerHealth = new Map();
     this.timer = null;
     this.refreshPending = null;
     for (const input of peers) {
@@ -116,13 +123,50 @@ export class PeerMesh {
             !Array.isArray(info.roots) || typeof info.platform !== "string") {
           throw new Error(`Peer identity or protocol mismatch for ${peer.id}`);
         }
+        if (peer.installationId && peer.installationId !== info.installationId) {
+          throw new Error(`Peer installation identity mismatch for ${peer.id}`);
+        }
+        await this.runtime.catalog.observe({
+          id: peer.id, defaultName: info.label || peer.id,
+          platform: info.platform, kind: "router",
+          installationId: info.installationId
+        });
+        this.peerHealth.set(peer.id, {
+          reachable: true,
+          backendReachable: info.backendReachable === true,
+          lastOnlineAt: Date.now(),
+          checkedAt: Date.now()
+        });
         this.runtime.devices.register({
-          id: peer.id, platform: info.platform, label: info.label || peer.id,
+          id: peer.id, platform: info.platform,
+          label: this.runtime.catalog.get(peer.id)?.name || info.label || peer.id,
           roots: info.roots, presence: "heartbeat",
           enabled: info.backendReachable === true,
           capabilities: ["devspace-http"]
         });
+        // Catalog replication is non-critical to routing. A metadata sync
+        // failure must never change a successfully probed execution route.
+        if (info.catalogVersion === 1) {
+          try {
+            const snapshot = await peerRequest(peer, "/_codassol/peer/catalog", {
+              fetchFn: this.fetchFn
+            });
+            await this.runtime.catalog.merge(snapshot);
+            // Bidirectional anti-entropy: one-way peer configuration still
+            // converges, and updates can transit across trusted peer hops.
+            await peerRequest(peer, "/_codassol/peer/catalog", {
+              method: "POST", payload: this.runtime.catalog.snapshot(),
+              fetchFn: this.fetchFn
+            });
+          } catch { /* retry next probe; routing remains available */ }
+        }
       } catch {
+        const previousHealth = this.peerHealth.get(peer.id);
+        this.peerHealth.set(peer.id, {
+          reachable: false, backendReachable: false,
+          lastOnlineAt: previousHealth?.lastOnlineAt ?? null,
+          checkedAt: Date.now()
+        });
         const previous = this.runtime.devices.get(peer.id);
         if (previous) this.runtime.devices.heartbeat(peer.id, { enabled: false });
       }
@@ -133,6 +177,20 @@ export class PeerMesh {
     } finally {
       if (this.refreshPending === pending) this.refreshPending = null;
     }
+  }
+
+  /** Best-effort immediate metadata propagation; periodic refresh heals misses. */
+  async publishCatalog() {
+    const snapshot = this.runtime.catalog.snapshot();
+    const results = await Promise.all([...this.peers.values()].map(async (peer) => {
+      try {
+        await peerRequest(peer, "/_codassol/peer/catalog", {
+          method: "POST", payload: snapshot, fetchFn: this.fetchFn
+        });
+        return true;
+      } catch { return false; }
+    }));
+    return { attempted: results.length, delivered: results.filter(Boolean).length };
   }
 
   start() {
