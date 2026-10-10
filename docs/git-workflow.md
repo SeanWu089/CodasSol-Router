@@ -48,3 +48,5 @@ The active macOS Router executes from `~/.local/share/codassol-router`; DevSpace
 1. Review the three intentionally dirty worktrees individually and commit only finished, tested changes; preserve the project-state draft verbatim.
 2. Merge validated follow-ups into `develop`, verify Mac/Windows/Router compatibility, and only then consider a stable `main` promotion.
 3. Deploy actual Registry v1 to the Mac/Windows only in an explicitly approved interruption window; physical-device testing remains outstanding.
+
+**Deployment update (2026-10-10):** The Mac Router has now been upgraded to Registry v1 and verified locally, while Windows Router deployment and physical peer synchronization remain pending. The deployed Mac binary includes two existing compatibility adjustments not yet present in `develop`. See [Mac Registry cutover notes](deployments/2026-10-10-mac-device-registry-v1.md) before replacing the live runtime again.
