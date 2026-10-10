@@ -1,5 +1,36 @@
 # Todos
 
+## Core direction: Intelligent Routing (parallel to Dynamic Ingress)
+
+- [ ] Design a **ChatGPT-first, semantic project selection** flow: before
+  `open_workspace`, ChatGPT can query trusted online devices, registered
+  workspace roots and optional consented project aliases/recent workspace
+  metadata, then select an explicit `device_id` and `path` without
+  requiring the user to specify both every time.
+- [ ] Expand the authenticated `codassol_list_devices` and/or introduce an
+  appropriately scoped `codassol_list_projects` / `codassol_resolve_project`
+  tool. Return **actual** device IDs, capability/readiness, ownership hints
+  and source provenance; never claim arbitrary unindexed project contents
+  have already been discovered. Do not expose unauthorized paths.
+- [ ] Preserve the safety boundary: ChatGPT may infer intent, but Router
+  enforces device identity, allowed roots, authorization and existing
+  `workspace_id` owner affinity. Unknown/ambiguous/offline targets must
+  fail closed; never fall back to Mac/current ingress merely because a
+  Windows path failed.
+- [ ] Add regressions for natural requests (“Windows desktop program”,
+  “continue yesterday's project”), duplicate project names on two devices,
+  disconnected devices, similar Windows/macOS paths, explicit overrides,
+  stale catalog entries and non-replay of mutating calls.
+- [ ] Validate real ChatGPT web and Codex client tool discovery/routing with
+  MCP metadata, separate **semantic selection** from deterministic Router
+  checks, and verify actual `open_workspace` + follow-up command on the
+  selected device.
+- [ ] Keep transport pluggable and minimal: the existing peer HTTPS path is
+  the verified implementation; evaluate an outbound task-claim channel for
+  nodes without peer reachability. No mandatory Tailscale, WebSocket or P2P
+  in the target product. Dynamic Ingress remains a separate entrypoint
+  availability milestone.
+
 ## Core v0.3: Dynamic Ingress (highest architecture priority)
 
 - [x] Add a read-only diagnostic CLI separating local Router, public Router,
