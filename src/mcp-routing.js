@@ -25,6 +25,7 @@ function toolCallInfo(message) {
 export function decideMcpRoute(payload, runtime) {
   const decisions = [];
   const openWorkspaceCalls = [];
+  const pathRewrites = new Map();
 
   for (const message of asMessages(payload)) {
     const call = toolCallInfo(message);
@@ -43,6 +44,9 @@ export function decideMcpRoute(payload, runtime) {
         requestId: call.id,
         deviceId: device.id
       });
+      if (device.path !== call.arguments.path || call.arguments.device_id !== undefined) {
+        pathRewrites.set(String(call.id), device.path);
+      }
       continue;
     }
 
@@ -66,8 +70,21 @@ export function decideMcpRoute(payload, runtime) {
 
   return {
     deviceId: unique[0] || runtime.localDeviceId,
-    openWorkspaceCalls
+    openWorkspaceCalls,
+    pathRewrites
   };
+}
+
+/** Only adjust tool arguments once the selected device has been verified. */
+export function rewriteMcpRequest(payload, decision) {
+  if (!decision.pathRewrites?.size) return payload;
+  const rewrite = (message) => {
+    if (!decision.pathRewrites.has(String(message?.id))) return message;
+    const args = { ...message.params.arguments, path: decision.pathRewrites.get(String(message.id)) };
+    delete args.device_id; // Routing metadata must not leak into DevSpace's tool schema.
+    return { ...message, params: { ...message.params, arguments: args } };
+  };
+  return Array.isArray(payload) ? payload.map(rewrite) : rewrite(payload);
 }
 
 function responseMessages(payload) {

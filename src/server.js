@@ -6,9 +6,11 @@ import { bearerToken, readBody, readJsonBody, sendJson } from "./http-utils.js";
 import {
   bindOpenWorkspaceResponses,
   decideMcpRoute,
-  parseMcpResponseBody
+  parseMcpResponseBody,
+  rewriteMcpRequest
 } from "./mcp-routing.js";
 import { createRouterRuntime } from "./runtime.js";
+import { addRouterTools, deviceSnapshot } from "./mcp-device-tools.js";
 
 const HOP_BY_HOP = new Set([
   "connection",
@@ -114,12 +116,29 @@ async function routeMcpRequest(req, res, config, runtime) {
     return false;
   }
 
+  const deviceToolCall = !Array.isArray(payload) && payload?.method === "tools/call" &&
+    payload.params?.name === "codassol_list_devices";
+  if (deviceToolCall) {
+    if (!await validateOuterAuthorization(config, req)) {
+      sendJson(res, 401, { error: "unauthorized" });
+      return true;
+    }
+    const data = deviceSnapshot(runtime, await probeBackend(config));
+    sendJson(res, 200, {
+      jsonrpc: "2.0", id: payload.id,
+      result: { content: [{ type: "text", text: JSON.stringify(data) }], structuredContent: data }
+    });
+    return true;
+  }
+
   await runtime.peerMesh?.recoverBindings(payload);
 
   const decision = decideMcpRoute(payload, runtime);
+  const routedPayload = rewriteMcpRequest(payload, decision);
+  const forwardedBody = routedPayload === payload ? body : Buffer.from(JSON.stringify(routedPayload));
   let response;
   if (decision.deviceId === runtime.localDeviceId) {
-    response = await bufferedRequest(config, req, body);
+    response = await bufferedRequest(config, req, forwardedBody);
   } else {
     const authorized = await validateOuterAuthorization(config, req);
     if (!authorized) {
@@ -134,7 +153,7 @@ async function routeMcpRequest(req, res, config, runtime) {
           // The caller's local DevSpace OAuth bearer must never leave its
           // Router. The executing node obtains its own local credential.
           headers: peerForwardedHeaders(req.headers),
-          bodyBase64: body.toString("base64")
+          bodyBase64: forwardedBody.toString("base64")
         }
       };
     const remote = runtime.peerMesh?.peers.has(decision.deviceId)
@@ -162,6 +181,19 @@ async function routeMcpRequest(req, res, config, runtime) {
       response.body
     );
     await bindOpenWorkspaceResponses(responsePayload, decision, runtime);
+  }
+  if (!Array.isArray(payload) && payload?.method === "tools/list" &&
+      response.statusCode >= 200 && response.statusCode < 300) {
+    const parsed = parseMcpResponseBody(response.headers["content-type"], response.body);
+    const enriched = addRouterTools(parsed);
+    if (enriched !== parsed) {
+      response = {
+        ...response,
+        headers: { ...response.headers, "content-type": "application/json; charset=utf-8" },
+        body: Buffer.from(JSON.stringify(enriched))
+      };
+      delete response.headers["content-length"];
+    }
   }
   writeBufferedResponse(res, response);
   return true;

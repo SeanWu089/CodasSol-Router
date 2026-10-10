@@ -34,3 +34,5 @@
 - [ ] Deploy Registry v1 to actual Mac and Windows Routers in an approved maintenance window and verify live peer names, backend health and rename propagation. Existing Mac Router is still the older production version.
 - [ ] Finalize secure client pairing/credential distribution and realtime push subscriptions for Windows/Android/iOS; current macOS implementation reads only local admin state and polls every 8 seconds.
 - [x] v0.3.1: polish legacy UI by hiding development warnings, listing both Agent and Peer records while excluding unregistered phones, suppress unsupported renames, and verify DevSpace listener ownership before Stop.
+- [x] v0.2 path-routing repair (staged): add authenticated MCP device discovery and explicit selection, deny wrong-machine fallback, and cover tilde/Windows-path behavior with regression tests in `fix/device-routing-v0.2`.
+- [ ] In an approved Mac Router maintenance window, back up and safely deploy the routing repair to the separate launchd runtime, recheck MCP tool discovery and real open_workspace+exec_command, and verify Windows routes without disrupting the old Agent.
