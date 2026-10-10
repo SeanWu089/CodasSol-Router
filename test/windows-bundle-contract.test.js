@@ -37,3 +37,25 @@ test("Windows package includes an independent Router and offline setup option", 
   assert.match(startup, /\(\[string\]\(Get-Content \$RootsFile -Raw\)\)\.Trim\(\)/,
     "empty roots files should fail with an actionable error, not a null-method exception");
 });
+
+test("Windows DevSpace recovery survives healthy startup and backend crashes", async () => {
+  const startup = await readFile("scripts/windows/runtime/start-devspace.ps1", "utf8");
+  const autostart = await readFile("scripts/windows/bundle/install-autostart.ps1", "utf8");
+
+  assert.match(startup, /while\s*\(\$true\)/i,
+    "a healthy backend must leave a supervisor running for later failures");
+  assert.match(startup, /\$health\.ok\s+-eq\s+\$true/,
+    "a TCP listener alone does not prove the DevSpace backend is healthy");
+  assert.match(startup, /\$health\.name\s+-eq\s+"devspace"/,
+    "an unrelated service on port 7676 must not masquerade as DevSpace");
+  assert.match(startup, /&\s+\$NodeExe\s+\$DevSpaceCli\s+serve/,
+    "DevSpace must restart using the published CLI rather than a missing shim");
+  assert.match(startup, /Start-Sleep\s+-Seconds\s+5/,
+    "a failed local service should be retried with a bounded backoff");
+  assert.doesNotMatch(startup, /exit\s+0/i,
+    "exiting when DevSpace is healthy would eliminate the crash supervisor");
+  assert.match(autostart, /-RestartCount\s+3/,
+    "Windows Scheduled Tasks must restart the supervisor after failure");
+  assert.match(autostart, /-StartWhenAvailable/,
+    "missed starts should be retried by Windows Task Scheduler");
+});

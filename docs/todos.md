@@ -1,5 +1,9 @@
 # Todos
 
+- [x] Prepare an isolated Windows v0.2 backend stability repair: preserve the existing `devspace` process when healthy, supervise continuously, restart via the published `dist/cli.js` after failure with backoff, and add Scheduled Task restart settings; add tests on `fix/windows-v0.2-backend-recovery`.
+- [ ] Restore physical Windows legacy DevSpace locally (Agent remains online but remote tools fail with `fetch failed`), then confirm live `healthz`, `open_workspace`, `read`, `exec_command`, Windows allowedRoots, Agent advertised roots, and stable device identity. **Do not** stop/reinstall the working Agent or alter bindings merely to revive DevSpace.
+- [ ] Reconcile the isolated recovery fix with the dirty `feat/distributed-routing-v0.2` candidate and deploy its side-by-side Windows Router/DevSpace only after the old execution channel is verified; do not overwrite unrelated uncommitted changes.
+
 - [x] Create a dedicated `fix/windows-v0.2-unified` worktree branch based on the distributed Router v0.2 branch, without modifying the Android worktree.
 - [x] Port the independent Windows DevSpace startup-path fix into v0.2, add install/upgrade regression contracts, and build an address-free Windows node archive.
 - [x] Install Mac Router v0.2 into its actual LaunchAgent runtime, recover from transient launchd registration failure, and verify protocol 2 plus backend reachability.

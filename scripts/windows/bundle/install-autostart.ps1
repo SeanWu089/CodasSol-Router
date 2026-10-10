@@ -15,7 +15,7 @@ foreach ($path in @($NodeExe, $AgentScript, $StartDevSpace, $StartRouter)) {
   if (-not (Test-Path $path)) { throw "Autostart prerequisite is missing: $path" }
 }
 
-$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -MultipleInstances IgnoreNew
+$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Seconds 0) -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
 $devspaceAction = New-ScheduledTaskAction -Execute "powershell.exe" -Argument ('-NoLogo -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + $StartDevSpace + '"')
 $agentAction = New-ScheduledTaskAction -Execute $NodeExe -Argument ('"' + $AgentScript + '" run') -WorkingDirectory (Join-Path $InstallRoot "app")
