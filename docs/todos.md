@@ -1,5 +1,22 @@
 # Todos
 
+## Core v0.3: Dynamic Ingress (highest architecture priority)
+
+- [x] Define **Single Endpoint · Dynamic Ingress · Distributed Nodes** contract,
+  mobile eligibility limits, ownership fencing, independent public MCP auth,
+  fail-closed behavior and acceptance checks; see
+  [2026-10-10 design](superpowers/specs/2026-10-10-dynamic-ingress-v0.3-design.md).
+- [ ] Implement shared Core eligibility and ingress state machine with
+  deterministic leader/fencing tests (disabled by default).
+- [ ] Verify real ngrok same-domain non-pooled exclusivity, ownership and
+  orphaned-agent release under two hosts; do **not** reconfigure production
+  ingress before those experiments.
+- [ ] Implement Mac/Windows IngressAdapters, secure automatic authorization
+  continuity and guarded cutover/rollback; then test Android capability
+  gating and physical phone service lifecycle.
+- [ ] Pass Mac-off/Windows-on and Windows-off/Mac-on ChatGPT MCP tests using
+  the existing **unchanged** fixed domain. Remain untagged until approved.
+
 - [x] Promote the Mac Device Registry v1, path-routing fail-closed fix and Mac menu app v0.3.2 into `develop`/`main` after Node + macOS regression suites pass, updating public release-status notes. Do not present the Windows Mac-offline v0.2 milestone as completed.
 - [ ] Keep the root Android worktree's uncommitted `docs/thoughts.md` intact; retire only clean, merged temporary Worktrees, and do not delete the three active dirty development checkouts.
 

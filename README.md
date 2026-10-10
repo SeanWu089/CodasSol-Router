@@ -15,6 +15,14 @@
 
 </div>
 
+> **Next architecture milestone — Core v0.3 (design / not yet deployed):**
+> **Single Endpoint · Dynamic Ingress · Distributed Nodes.** The goal is
+> one stable public MCP URL with safe ingress ownership transfer between
+> eligible online Routers, independently of the number of registered devices.
+> This is *not* an availability claim: leader fencing and cross-host client
+> authorization are still under development. See the
+> [Dynamic Ingress v0.3 design](docs/superpowers/specs/2026-10-10-dynamic-ingress-v0.3-design.md).
+
 > **Current codebase (2026-10-10):** The default branch includes the tested
 > **Device Registry v1**, **CodasSol-mac v0.3.2** menu-bar app, and Mac-side
 > workspace routing / wrong-device protections. These components were
