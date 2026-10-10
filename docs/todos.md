@@ -31,6 +31,27 @@
   in the target product. Dynamic Ingress remains a separate entrypoint
   availability milestone.
 
+## v0.3 transport decision — SSE-first, validate before implementation
+
+- [x] Compare short HTTP polling, HTTP long polling, SSE, WebSocket and
+  ngrok Endpoint Pooling against simplicity, latency, free-plan usage and
+  single-owner stability; record the SSE-first decision and trade-offs in
+  `docs/thoughts.md`. This is a **design decision**, not a deployed feature.
+- [ ] Prototype authenticated outbound HTTPS SSE with a standby node, small
+  heartbeat/keepalive frames, task events, HTTP POST results, bounded reconnect
+  backoff/jitter, and fallback to existing HTTP Agent polling. Preserve
+  device-scoped authorization and DevSpace-local execution.
+- [ ] Measure ngrok request/transfer accounting, SSE proxy/idle timeout and
+  reconnection behavior with two real devices over a 24-hour soak; include
+  short network outages, service restart and unexpected power loss.
+- [ ] Prove non-pooled fixed-hostname exclusive acquisition/release/fencing on
+  Mac and Windows, with sticky ownership and no automatic reclaim after
+  recovery. Do not touch the production ngrok tunnel for unsafe tests.
+- [ ] Verify ChatGPT MCP OAuth continuity and workspace/device ownership
+  after ingress failover; do not automatically replay non-idempotent jobs.
+- [ ] Confirm no mandatory Tailscale, WebSocket, P2P, extra public endpoints,
+  or cloud-hosted always-on server in the resulting user setup.
+
 ## Core v0.3: Dynamic Ingress (highest architecture priority)
 
 - [x] Add a read-only diagnostic CLI separating local Router, public Router,
