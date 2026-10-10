@@ -102,3 +102,45 @@ through a Mac Router, shut down the Mac Router, then read that workspace
 directly through the Windows Router. A real two-device deployment with
 network firewall, OAuth and Windows Scheduled Tasks must be tested before
 publishing v0.2 as generally available.
+
+## Device Registry v1 (experimental API)
+
+The device directory is separate from the routing table and persists in the
+private state directory as `devices.json`. It remembers registered/local and
+trusted-peer-discovered devices when they are offline. Every Router has a
+persisted `installationId` for collision detection. Existing route IDs are
+**not** silently changed, and a display-name change never changes a workspace
+binding or grants remote execution rights.
+
+`GET /_codassol/devices` lists this device first, then other devices with
+`id`, `installationId`, `name`, `platform`, `kind`, `status`,
+`backendReachable`, `lastSeenAt` and `isThisDevice` fields. `status` can be
+`online`, `degraded`, `offline`, or `unknown` (known by catalog, but not directly
+reachable from this Router). This API is protected by a **separate local admin
+token**; Agent pairing/heartbeat and peer bearer tokens do not authorize GUI
+renames.
+
+Retrieve the secret on the **Router you want to use** via
+`npm run router:admin-token --silent`. Example from a trusted local shell:
+
+```sh
+TOKEN="$(npm run router:admin-token --silent)"
+curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:17676/_codassol/devices
+curl -X PATCH -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Home GPU"}' \
+  http://127.0.0.1:17676/_codassol/devices/WINDOWS-PC-ID
+```
+
+Do not paste this token into public logs or check it into Git. Remote clients
+must first be securely paired/authorized; do not expose the endpoint over raw
+public HTTP. A rename is persisted locally before the Router makes a best-effort
+immediate publication to trusted peers; the response includes `sync.attempted`
+and `sync.delivered`. Authenticated Peer Routers independently exchange
+snapshots over `GET/POST /_codassol/peer/catalog` during their usual health
+probes and use deterministic Lamport revisions to reconcile conflicting edits.
+If nodes are disconnected, **temporary divergence is unavoidable**; names
+converge when reachable peers exchange snapshots again. Peer list discovery,
+per-client pairing UI, revoke/reset flows and a genuinely push-driven UI are
+separate stages. A device discovered through another peer is **display-only**
+until that Router is explicitly authorized to route to it.
