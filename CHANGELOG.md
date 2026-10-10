@@ -1,5 +1,19 @@
 # Changelog
 
+## Verified Mac integration — 2026-10-10
+
+- Consolidate previously tested Device Registry v1, Mac-side device discovery,
+  guarded workspace routing, and macOS menu-bar controller v0.3.2 into the
+  default branch; keep their original feature/fix commits and release tag.
+- Show Agent presence separately from validated command execution. A recent
+  heartbeat must not be reported as proof that remote DevSpace tools work.
+- Preserve the production Mac Router/DevSpace/ngrok deployment unchanged by
+  this Git history update. The Registry API's remaining source/runtime
+  discrepancy and the unverified Windows execution path are documented.
+- **Not a stable distributed v0.2 release:** Windows independent ingress,
+  Mac-offline client access, and Windows reboot/network recovery still need
+  physical integration tests.
+
 ## v0.2.0-dev — in progress (2026-10-08)
 
 - Unify the Windows v0.2 package with the verified private Node +

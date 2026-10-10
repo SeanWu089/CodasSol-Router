@@ -4,8 +4,8 @@ Status reviewed on 2026-10-10; verify with `git branch -avv` and `git worktree l
 
 ## Long-lived branches
 
-- **`main`** — manually promoted stable code. It is not the deployed runtime; `origin/main` is currently behind local `main`. No automatic pushes or releases.
-- **`develop`** — integrated development code. On 2026-10-10, it includes the committed distributed Router v0.2, Windows startup repair, Device Registry v1, Android V0 and CodasSol-mac v0.3.1 histories, with Node and macOS regression suites passing. This is a source integration checkpoint, **not** proof that Registry v1 is running on physical devices.
+- **`main`** — public default integration branch, promoted only after regression tests. The October 10 checkpoint integrates macOS Registry v1, the verified Mac routing repairs and CodasSol-mac v0.3.2, plus the earlier Android V0. **The v0.2 Windows distributed/offline acceptance gate is still open.** A Git merge never installs new code on a running machine.
+- **`develop`** — up-to-date integrated source branch. The clean, tested Mac v0.3.2 integration is promoted into `develop` before `main`, while dirty Windows installer/health work remains isolated until tested on real hardware.
 - **`release/windows-v0.1.0`** — retained historical release branch; old version also retained as tag `v0.1.0`.
 
 ## Temporary branches retained deliberately
@@ -46,7 +46,7 @@ The active macOS Router executes from `~/.local/share/codassol-router`; DevSpace
 ## Next safe housekeeping steps
 
 1. Review the three intentionally dirty worktrees individually and commit only finished, tested changes; preserve the project-state draft verbatim.
-2. Merge validated follow-ups into `develop`, verify Mac/Windows/Router compatibility, and only then consider a stable `main` promotion.
-3. Deploy actual Registry v1 to the Mac/Windows only in an explicitly approved interruption window; physical-device testing remains outstanding.
+2. Keep the physically unverified Windows distributed-routing candidate off the release path until legacy Agent recovery and Mac-offline execution are demonstrated.
+3. The Mac Router already runs Registry v1, but its un-deployed tri-state Agent-backend status API fix still needs a guarded maintenance window. Windows Registry, peer synchronization and actual execution remain pending.
 
-**Deployment update (2026-10-10):** The Mac Router has now been upgraded to Registry v1 and verified locally, while Windows Router deployment and physical peer synchronization remain pending. The deployed Mac binary includes two existing compatibility adjustments not yet present in `develop`. See [Mac Registry cutover notes](deployments/2026-10-10-mac-device-registry-v1.md) before replacing the live runtime again.
+**Deployment update (2026-10-10):** The Mac Router has now been upgraded to Registry v1 and verified locally, while Windows Router deployment and physical peer synchronization remain pending. The Mac compatibility adjustments (legacy Windows D:/E: handling and peer MCP header forwarding) have been preserved in source through `fix/device-routing-v0.2`. Merging that source does **not** redeploy the live Router; its tri-state Agent backend reporting update still needs guarded deployment. See [Mac Registry cutover notes](deployments/2026-10-10-mac-device-registry-v1.md) before replacing the live runtime again.

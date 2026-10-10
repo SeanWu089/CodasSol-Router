@@ -15,6 +15,14 @@
 
 </div>
 
+> **Current codebase (2026-10-10):** The default branch includes the tested
+> **Device Registry v1**, **CodasSol-mac v0.3.2** menu-bar app, and Mac-side
+> workspace routing / wrong-device protections. These components were
+> verified on macOS. The cross-network, **Mac-offline Windows v0.2** goal is
+> **still under development**: Windows can report an Agent heartbeat even
+> when its DevSpace cannot execute commands. Do not interpret a registered
+> device as execution-ready. See [distributed routing](docs/distributed-routing.md).
+
 ---
 
 ## What is CodasSol Router?
@@ -355,9 +363,17 @@ MIT.
 
 </div>
 
-## macOS menu bar controller (experimental)
+## macOS menu bar controller (v0.3.2)
 
-Build and install the native Swift/AppKit menu app with `zsh scripts/mac/menu-app/build.sh` (default destination: `~/Applications/CodasSol-mac.app`). Launch it from Finder or `open -a "$HOME/Applications/CodasSol-mac.app"`. The menu independently checks local DevSpace (`127.0.0.1:7676/healthz`) and Router (`127.0.0.1:17676/_codassol/health`). It can bootstrap and stop only its own `com.codassol.devspace.menu` LaunchAgent. An existing DevSpace launched outside the app is labeled **Externally started** and will not be stopped, to avoid breaking active sessions. The Router's existing LaunchAgent is observed but never changed. The service binary is expected at `~/.local/npm-global/bin/devspace`; this first version targets the current Mac installation and has not yet been tested with a clean-service start/stop cycle.
+Build the native Swift/AppKit menu app with `zsh scripts/mac/menu-app/build.sh`
+(default destination: `~/Applications/CodasSol-mac.app`). Launch it from
+Finder or `open -a "$HOME/Applications/CodasSol-mac.app"`. It probes the local
+DevSpace (`127.0.0.1:7676/healthz`) and Router
+(`127.0.0.1:17676/_codassol/health`) independently. The managed DevSpace
+LaunchAgent is `com.codassol.devspace.mac`; the Stop action is enabled only
+after confirming the managed process actually owns the listener. DevSpace
+is discovered by its published `dist/cli.js` entrypoint, not a fragile npm
+shim. Installing the menu app does **not** restart the Router.
 
 The menu app status item uses a monochrome macOS template icon derived from the local `sean.PNG` avatar, bundled as `scripts/mac/menu-app/SeanTemplate.png`. For local upgrades, rebuild and relaunch the menu app; server restart is not required.
 
@@ -395,6 +411,13 @@ records both appear; an unregistered phone does not. Legacy detail names are
 read-only instead of offering a save button that could not succeed. The Stop
 button is only available after confirming the managed LaunchAgent PID matches
 the actual TCP/7676 listening process, not merely a loaded service definition.
+
+**v0.3.2 status safety:** A registered Windows Agent can be heartbeat-online
+without being remotely executable. Such devices show amber **Agent online**
+and **Execution: Not verified**, not green **Connected**. A remote Router's
+healthy backend is also insufficient proof of actual command execution.
+The related Registry API correction is committed but still requires a
+separately controlled Router runtime upgrade.
 
 ### CodasSol-mac v0.2 (pre-migration)
 
