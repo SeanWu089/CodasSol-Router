@@ -327,6 +327,10 @@ The next useful layers are not “more AI.” They are **better control over a p
 npm test
 ```
 
+See [Git branches, worktrees, and release workflow](docs/git-workflow.md)
+for the current `main`/`develop` policy, protected in-progress worktrees,
+and a clean history view that excludes internal DevSpace review snapshots.
+
 Current V1 tests cover Agent enrollment/heartbeat/job transport, local DevSpace OAuth, Windows path semantics, most-specific-root selection, ambiguity/offline fail-closed behavior, sticky workspace bindings, cross-device batch rejection, Router proxying, and health checks.
 
 ---
