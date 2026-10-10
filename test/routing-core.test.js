@@ -97,15 +97,87 @@ test("matching heartbeat device fails closed after it goes offline", () => {
   );
 });
 
-test("single online device remains a backward-compatible fallback", () => {
+test("offline specific project root cannot fall back to another machine's broader root", () => {
+  const fixture = makePolicy({ ttl: 500 });
+  fixture.devices.register({
+    id: "windows-local", platform: "win32", presence: "static", roots: ["C:\\Users"]
+  });
+  fixture.devices.register({
+    id: "windows-away", platform: "win32", presence: "heartbeat",
+    roots: ["C:\\Users\\Example\\Project"]
+  });
+  fixture.advance(501);
+  assert.throws(
+    () => fixture.policy.resolveOpenWorkspace({ path: "C:\\Users\\Example\\Project\\src" }),
+    (error) => error.code === "DEVICE_OFFLINE"
+  );
+});
+
+test("an unmatched Windows path never falls back to the only Mac", () => {
   const { devices, policy } = makePolicy();
   devices.register({
     id: "local",
     platform: "darwin",
     presence: "static",
-    roots: []
+    roots: ["/Users/example"]
   });
-  assert.equal(policy.resolveOpenWorkspace({ path: "/any/project" }).id, "local");
+  assert.throws(
+    () => policy.resolveOpenWorkspace({ path: "C:/Users/ASUS/Desktop" }),
+    (error) => error.code === "NO_DEVICE_MATCH" && error.details.deviceIds.includes("local")
+  );
+});
+
+test("home shorthand is resolved against a matching device root, not router OS guesses", () => {
+  const { devices, policy } = makePolicy();
+  devices.register({ id: "mac", platform: "darwin", presence: "static", roots: ["/Users/example"] });
+  devices.register({ id: "windows", platform: "win32", presence: "static", roots: ["C:\\Users\\Example"] });
+  assert.deepEqual(policy.resolveOpenWorkspace({ path: "~/Desktop", deviceId: "mac" }).path,
+    "/Users/example/Desktop");
+  assert.deepEqual(policy.resolveOpenWorkspace({ path: "~/Desktop", deviceId: "windows" }).path,
+    "C:\\Users\\Example\\Desktop");
+});
+
+test("unqualified home shorthand with multiple devices asks for target", () => {
+  const { devices, policy } = makePolicy();
+  devices.register({ id: "mac", platform: "darwin", presence: "static", roots: ["/Users/example"] });
+  devices.register({ id: "windows", platform: "win32", presence: "static", roots: ["C:\\Users\\Example"] });
+  assert.throws(
+    () => policy.resolveOpenWorkspace({ path: "~/Desktop" }),
+    (error) => error.code === "AMBIGUOUS_DEVICE" && error.details.deviceIds.length === 2
+  );
+});
+
+test("explicit device selection preserves paths and never silently switches devices", () => {
+  const { devices, policy } = makePolicy();
+  devices.register({ id: "mac", platform: "darwin", presence: "static", roots: ["/Users/example"] });
+  devices.register({ id: "windows", platform: "win32", presence: "static", roots: ["C:\\Users\\Example"] });
+  assert.equal(policy.resolveOpenWorkspace({ path: "C:/Users/Example/Desktop", deviceId: "windows" }).id, "windows");
+  assert.throws(
+    () => policy.resolveOpenWorkspace({ path: "/Users/example/Desktop", deviceId: "windows" }),
+    (error) => error.code === "PATH_NOT_ON_DEVICE"
+  );
+});
+
+test("only the historical D/E paths use the constrained rootless Windows recovery route", () => {
+  const { devices, policy } = makePolicy();
+  devices.register({ id: "local", platform: "darwin", presence: "static", roots: ["/Users/example"] });
+  devices.register({ id: "SEANSWPC", platform: "win32", presence: "static", roots: [] });
+  assert.equal(policy.resolveOpenWorkspace({ path: "D:\\Repos\\Foo" }).id, "SEANSWPC");
+  assert.equal(policy.resolveOpenWorkspace({ path: "E:/Projects/Foo" }).id, "SEANSWPC");
+  assert.throws(() => policy.resolveOpenWorkspace({ path: "C:/Users/ASUS/Desktop" }),
+    (error) => error.code === "NO_DEVICE_MATCH");
+  devices.register({ id: "otherWindows", platform: "win32", presence: "static", roots: ["C:/Users/Other"] });
+  assert.throws(() => policy.resolveOpenWorkspace({ path: "D:/Repos/Foo" }),
+    (error) => error.code === "NO_DEVICE_MATCH");
+});
+
+test("legacy rootless Windows Agent can be explicitly selected without broadening permissions", () => {
+  const { devices, policy } = makePolicy();
+  devices.register({ id: "old-win", platform: "win32", presence: "static", roots: [] });
+  assert.equal(policy.resolveOpenWorkspace({ path: "~/Desktop", deviceId: "old-win" }).path, "~/Desktop");
+  assert.equal(policy.resolveOpenWorkspace({ path: "D:\\Projects", deviceId: "old-win" }).id, "old-win");
+  assert.throws(() => policy.resolveOpenWorkspace({ path: "/Users/sean", deviceId: "old-win" }),
+    (error) => error.code === "PATH_NOT_ON_DEVICE");
 });
 
 test("workspace binding is sticky and routes to the original device", async () => {

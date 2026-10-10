@@ -1,5 +1,11 @@
 # Windows Agent Setup
 
+> **v0.2 development branch:** the self-contained bundle now also installs a
+> local Router, accessible on `http://127.0.0.1:17676`, regardless of whether
+> the original Mac is online. Remote enrollment is optional. The current
+> published v0.1.3 package remains Agent-only until a v0.2 release.
+> See [Distributed routing v0.2](distributed-routing.md) for peer configuration.
+
 This guide connects a Windows computer to an already-running CodasSol Router.
 The Windows machine does not need an ngrok endpoint or inbound firewall rule.
 

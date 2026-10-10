@@ -20,6 +20,12 @@ if (command === "init") {
 } else if (command === "pairing-token") {
   await state.init();
   console.log(state.pairingToken);
+} else if (command === "peer-token") {
+  await state.init();
+  console.log(state.peerToken);
+} else if (command === "admin-token") {
+  await state.init();
+  console.log(state.adminToken);
 } else if (command === "agents") {
   await state.init();
   const agents = state.listAgents();
@@ -45,6 +51,8 @@ if (command === "init") {
     "",
     "  npm run router:init",
     "  npm run router:pairing-token",
+    "  npm run router:peer-token",
+    "  npm run router:admin-token",
     "  npm run router:agents",
     "  npm run router:lan"
   ].join("\n"));

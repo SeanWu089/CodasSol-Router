@@ -1,7 +1,8 @@
 param(
   [string]$RouterUrl = "",
   [string]$PairingToken = "",
-  [string]$Roots = ""
+  [string]$Roots = "",
+  [switch]$SkipEnrollment
 )
 
 $ErrorActionPreference = "Stop"
@@ -118,8 +119,8 @@ function Resolve-AccessRoots([string]$RequestedRoots) {
 }
 
 Write-Host ""
-Write-Host "CodasSol Windows Agent" -ForegroundColor Green
-Write-Host "Self-contained installer: no Git, no global Node/npm changes, no admin install required."
+Write-Host "CodasSol Windows Router + Agent" -ForegroundColor Green
+Write-Host "Independent local routing: no Mac connection or administrator install required."
 
 $Roots = Resolve-AccessRoots $Roots
 
@@ -135,7 +136,7 @@ $RuntimeDir = Join-Path $InstallRoot "runtime"
 $NodeExe = Join-Path $NodeDir "node.exe"
 $NpmCmd = Join-Path $NodeDir "npm.cmd"
 $AgentScript = Join-Path $AppDir "agent.js"
-$DevSpaceCmd = Join-Path $DevSpaceDir "node_modules\.bin\devspace.cmd"
+$DevSpaceCli = Join-Path $DevSpaceDir "node_modules\@waishnav\devspace\dist\cli.js"
 $DevSpaceVersion = "1.1.0-beta.4"
 $ConfigureRoots = Join-Path $RuntimeDir "configure-devspace-root.mjs"
 
@@ -145,6 +146,24 @@ if ($DetectedArch -ne "AMD64") {
 }
 if (-not (Test-Path $NodeSource)) { throw "Bundle payload is incomplete: payload\node is missing." }
 if (-not (Test-Path $AppSource)) { throw "Bundle payload is incomplete: payload\app is missing." }
+
+Write-Step "Preparing a safe in-place upgrade"
+# Never overwrite the private Node executable while existing CodasSol tasks
+# are using it. Other Node installations and unrelated processes are untouched.
+foreach ($taskName in @("CodasSol Agent", "CodasSol Router", "CodasSol DevSpace")) {
+  $task = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+  if ($task -and $task.State -eq "Running") {
+    Stop-ScheduledTask -TaskName $taskName
+  }
+}
+if (Test-Path $NodeExe) {
+  $oldProcesses = @(Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" |
+    Where-Object { $_.ExecutablePath -eq $NodeExe })
+  foreach ($oldProcess in $oldProcesses) {
+    Write-Host "Stopping prior private CodasSol runtime (PID $($oldProcess.ProcessId))."
+    Stop-Process -Id $oldProcess.ProcessId -Force -ErrorAction Stop
+  }
+}
 
 Write-Step "Installing the private CodasSol runtime"
 New-Item -ItemType Directory -Force -Path $InstallRoot | Out-Null
@@ -157,6 +176,7 @@ Copy-Item -Recurse -Force (Join-Path $AppSource "*") $AppDir
 New-Item -ItemType Directory -Force -Path $RuntimeDir | Out-Null
 Copy-Item -Force (Join-Path $PayloadDir "runtime\start-devspace.ps1") $RuntimeDir
 Copy-Item -Force (Join-Path $PayloadDir "runtime\start-agent.ps1") $RuntimeDir
+Copy-Item -Force (Join-Path $PayloadDir "runtime\start-router.ps1") $RuntimeDir
 Copy-Item -Force (Join-Path $PayloadDir "runtime\configure-devspace-root.mjs") $RuntimeDir
 
 $env:PATH = "$NodeDir;$env:PATH"
@@ -168,8 +188,8 @@ Write-Host "Node verified: $nodeVersion"
 
 Write-Step "Installing DevSpace locally"
 $needsDevSpace = $true
-if (Test-Path $DevSpaceCmd) {
-  $currentVersion = (& $DevSpaceCmd --version 2>$null)
+if (Test-Path $DevSpaceCli) {
+  $currentVersion = (& $NodeExe $DevSpaceCli --version 2>$null)
   if ($LASTEXITCODE -eq 0 -and $currentVersion -match [regex]::Escape($DevSpaceVersion)) {
     $needsDevSpace = $false
     Write-Host "DevSpace already present: $currentVersion"
@@ -179,7 +199,8 @@ if ($needsDevSpace) {
   New-Item -ItemType Directory -Force -Path $DevSpaceDir | Out-Null
   Install-DevSpace -Npm $NpmCmd -Prefix $DevSpaceDir -Version $DevSpaceVersion
 }
-$devspaceVersionActual = & $DevSpaceCmd --version
+if (-not (Test-Path $DevSpaceCli)) { throw "DevSpace CLI is missing after installation: $DevSpaceCli" }
+$devspaceVersionActual = & $NodeExe $DevSpaceCli --version
 if ($LASTEXITCODE -ne 0) { throw "DevSpace verification failed." }
 Write-Host "DevSpace verified: $devspaceVersionActual"
 
@@ -190,7 +211,7 @@ if (-not (Test-Path $DevSpaceAuth)) {
   Write-Host "When asked where DevSpace will be used, choose: Coding Agents."
   Write-Host "Do not create a second public tunnel for this Windows machine."
   Write-Host ""
-  & $DevSpaceCmd init
+  & $NodeExe $DevSpaceCli init
   if ($LASTEXITCODE -ne 0) { throw "DevSpace initialization failed." }
 }
 if (-not (Test-Path $DevSpaceAuth)) {
@@ -203,6 +224,11 @@ if (-not (Test-Path $DevSpaceConfig)) {
 }
 & $NodeExe $ConfigureRoots $DevSpaceDir $DevSpaceConfig $Roots
 if ($LASTEXITCODE -ne 0) { throw "Unable to align DevSpace allowed roots with CodasSol Agent roots." }
+
+$StateDir = Join-Path $env:USERPROFILE ".codassol"
+New-Item -ItemType Directory -Force -Path $StateDir | Out-Null
+$RootsFile = Join-Path $StateDir "roots.txt"
+[System.IO.File]::WriteAllText($RootsFile, $Roots, [System.Text.UTF8Encoding]::new($false))
 
 Write-Step "Starting local DevSpace"
 try {
@@ -223,29 +249,50 @@ for ($i = 0; $i -lt 30; $i++) {
 if (-not $ready) { throw "DevSpace did not become ready on 127.0.0.1:7676." }
 Write-Host "DevSpace health check passed."
 
-Write-Step "Connecting this PC to CodasSol Router"
+Write-Step "Optional connection to another CodasSol Router"
 $DefaultRouterFile = Join-Path $BundleDir "router-default.txt"
 if ([string]::IsNullOrWhiteSpace($RouterUrl) -and (Test-Path $DefaultRouterFile)) {
-  $RouterUrl = (Get-Content $DefaultRouterFile -Raw).Trim()
+  # A zero-byte router-default.txt returns $null in PowerShell 5.1. Never
+  # call Trim() on the result before normalizing to a string.
+  $prefill = Get-Content $DefaultRouterFile -Raw
+  $RouterUrl = ([string]$prefill).Trim()
   if (-not [string]::IsNullOrWhiteSpace($RouterUrl)) {
     Write-Host "Trying packaged Router URL: $RouterUrl"
   }
 }
-$RouterUrl = Resolve-RouterUrl $RouterUrl
-
-if ([string]::IsNullOrWhiteSpace($PairingToken)) {
-  Write-Host ""
-  Write-Host "Paste the one-time pairing token from the Mac Router." -ForegroundColor Yellow
-  $PairingToken = Read-Secret "Pairing token"
-}
-if ([string]::IsNullOrWhiteSpace($PairingToken)) { throw "Pairing token cannot be empty." }
-
-& $NodeExe $AgentScript enroll --router $RouterUrl --pairing-token $PairingToken --device-id $env:COMPUTERNAME --label $env:COMPUTERNAME --roots $Roots
-$PairingToken = $null
-if ($LASTEXITCODE -ne 0) { throw "CodasSol Agent enrollment failed." }
-
 $AgentConfig = Join-Path $env:USERPROFILE ".codassol\agent.json"
-if (-not (Test-Path $AgentConfig)) { throw "Agent config was not created at $AgentConfig." }
+$ShouldEnroll = -not $SkipEnrollment
+if ($ShouldEnroll -and [string]::IsNullOrWhiteSpace($RouterUrl)) {
+  $choice = (Read-Host "Connect to another Router now? [y/N]").Trim()
+  $ShouldEnroll = $choice -match '^[yY]$'
+}
+if ($ShouldEnroll -and -not [string]::IsNullOrWhiteSpace($RouterUrl) -and -not (Test-Router $RouterUrl)) {
+  Write-Host "Remote Router is offline. Continuing with the independent local Router." -ForegroundColor Yellow
+  $ShouldEnroll = $false
+}
+if ($ShouldEnroll) {
+  $RouterUrl = Resolve-RouterUrl $RouterUrl
+  if ([string]::IsNullOrWhiteSpace($PairingToken)) {
+    $PairingToken = Read-Secret "One-time pairing token from the remote Router"
+  }
+  if ([string]::IsNullOrWhiteSpace($PairingToken)) { throw "Pairing token cannot be empty." }
+  & $NodeExe $AgentScript enroll --router $RouterUrl --pairing-token $PairingToken --device-id $env:COMPUTERNAME --label $env:COMPUTERNAME --roots $Roots
+  $PairingToken = $null
+  if ($LASTEXITCODE -ne 0) { throw "CodasSol Agent enrollment failed." }
+}
+
+if (Test-Path $AgentConfig) {
+  # Reinstalling offline must not leave Agent-advertised roots different from
+  # DevSpace's effective allowedRoots on this machine.
+  $existingAgent = Get-Content $AgentConfig -Raw | ConvertFrom-Json
+  $newRoots = @($Roots -split '\|')
+  if (($existingAgent.device.roots -join '|') -ne ($newRoots -join '|')) {
+    Copy-Item -Force $AgentConfig "$AgentConfig.v0.2.bak"
+    $existingAgent.device.roots = $newRoots
+    $updated = $existingAgent | ConvertTo-Json -Depth 15
+    [System.IO.File]::WriteAllText($AgentConfig, $updated, [System.Text.UTF8Encoding]::new($false))
+  }
+}
 
 Write-Step "Installing current-user autostart"
 $AutoScript = Join-Path $BundleDir "install-autostart.ps1"
@@ -253,23 +300,54 @@ $AutoScript = Join-Path $BundleDir "install-autostart.ps1"
 if ($LASTEXITCODE -ne 0) { throw "Autostart installation failed." }
 
 Write-Step "Final verification"
-$agentConfigJson = Get-Content $AgentConfig -Raw | ConvertFrom-Json
-if ($agentConfigJson.routerUrl -ne $RouterUrl) {
-  throw "Agent config Router URL verification failed."
+if ($ShouldEnroll) {
+  $agentConfigJson = Get-Content $AgentConfig -Raw | ConvertFrom-Json
+  if ($agentConfigJson.routerUrl -ne $RouterUrl) {
+    throw "Agent config Router URL verification failed."
+  }
 }
 if (-not (Get-ScheduledTask -TaskName "CodasSol DevSpace" -ErrorAction SilentlyContinue)) {
   throw "CodasSol DevSpace scheduled task is missing."
 }
-if (-not (Get-ScheduledTask -TaskName "CodasSol Agent" -ErrorAction SilentlyContinue)) {
+if (-not (Get-ScheduledTask -TaskName "CodasSol Router" -ErrorAction SilentlyContinue)) {
+  throw "CodasSol Router scheduled task is missing."
+}
+if ((Test-Path $AgentConfig) -and -not (Get-ScheduledTask -TaskName "CodasSol Agent" -ErrorAction SilentlyContinue)) {
   throw "CodasSol Agent scheduled task is missing."
 }
+$localRouterReady = $false
+for ($i = 0; $i -lt 15; $i++) {
+  if (Test-Router "http://127.0.0.1:17676") { $localRouterReady = $true; break }
+  Start-Sleep -Seconds 1
+}
+if (-not $localRouterReady) { throw "Local independent Router did not become ready." }
+
+# A stale pre-v0.2 process might still own port 17676. Verify that the
+# responding Router is this machine's actual protocol-v2 node, not just any
+# service returning a health response.
+$RouterCli = Join-Path $AppDir "router-cli.js"
+$LocalPeerToken = (& $NodeExe $RouterCli peer-token).Trim()
+if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($LocalPeerToken)) {
+  throw "Unable to load this node's local Router identity."
+}
+try {
+  $LocalInfo = Invoke-RestMethod -Uri "http://127.0.0.1:17676/_codassol/peer/info" -TimeoutSec 5 -Headers @{
+    Authorization = "Bearer $LocalPeerToken"
+  }
+  if ($LocalInfo.protocol -ne 2 -or $LocalInfo.id -ne $env:COMPUTERNAME) {
+    throw "Wrong Router identity or protocol on 127.0.0.1:17676."
+  }
+} finally { $LocalPeerToken = $null }
 
 Write-Host ""
 Write-Host "Installed successfully." -ForegroundColor Green
-Write-Host "Router:     $RouterUrl"
-Write-Host "Agent ID:   $env:COMPUTERNAME"
+Write-Host "Local Router: http://127.0.0.1:17676"
+if ($ShouldEnroll) { Write-Host "Remote Agent target: $RouterUrl" }
+elseif (Test-Path $AgentConfig) { Write-Host "Existing remote Agent configuration preserved." }
+else { Write-Host "Remote Agent: not enrolled (optional)." }
+Write-Host "Node ID:    $env:COMPUTERNAME"
 Write-Host "Project root advertised to Router: $Roots"
 Write-Host "Runtime:    $InstallRoot"
 Write-Host "Private config: $AgentConfig"
 Write-Host ""
-Write-Host "The Agent and DevSpace will start automatically when this Windows user logs in."
+Write-Host "The independent Router and DevSpace will start at Windows logon; Agent starts if configured."

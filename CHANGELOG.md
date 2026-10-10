@@ -1,5 +1,39 @@
 # Changelog
 
+## Verified Mac integration — 2026-10-10
+
+- Consolidate previously tested Device Registry v1, Mac-side device discovery,
+  guarded workspace routing, and macOS menu-bar controller v0.3.2 into the
+  default branch; keep their original feature/fix commits and release tag.
+- Show Agent presence separately from validated command execution. A recent
+  heartbeat must not be reported as proof that remote DevSpace tools work.
+- Preserve the production Mac Router/DevSpace/ngrok deployment unchanged by
+  this Git history update. The Registry API's remaining source/runtime
+  discrepancy and the unverified Windows execution path are documented.
+- **Not a stable distributed v0.2 release:** Windows independent ingress,
+  Mac-offline client access, and Windows reboot/network recovery still need
+  physical integration tests.
+
+## v0.2.0-dev — in progress (2026-10-08)
+
+- Unify the Windows v0.2 package with the verified private Node +
+  `@waishnav/devspace/dist/cli.js` startup path, replacing the unreliable
+  npm-generated `devspace.cmd` shim for install, init, and autostart.
+- Stop only CodasSol-managed scheduled tasks/private Node processes before an
+  in-place Windows upgrade, and handle empty Router roots files cleanly.
+- Pin the Mac LaunchAgent to Node's persistent executable path and tolerate
+  launchd's brief label-reuse delay when reloading the Router.
+- Add opt-in authenticated Router-to-Router peer transport; remote DevSpace
+  OAuth credentials remain local to the executing machine.
+- Persist workspace bindings on owner nodes and recover ownership from a
+  reachable owner even after the original Router endpoint is offline.
+- Ship a Windows-capable standalone Router runtime and optional Agent
+  enrollment; local Windows routing no longer requires the Mac to be online.
+- Reject offline roots and ambiguous owners instead of silently re-routing
+  operations to a different computer.
+- Client endpoint failover, peer discovery automation, and physical Windows
+  validation remain pending before a stable v0.2 release.
+
 ## v0.1.4 — 2026-10-08
 
 - Added the Android V0 native Router/DevSpace health client and USB debug

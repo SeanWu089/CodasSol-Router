@@ -6,9 +6,11 @@ import { bearerToken, readBody, readJsonBody, sendJson } from "./http-utils.js";
 import {
   bindOpenWorkspaceResponses,
   decideMcpRoute,
-  parseMcpResponseBody
+  parseMcpResponseBody,
+  rewriteMcpRequest
 } from "./mcp-routing.js";
 import { createRouterRuntime } from "./runtime.js";
+import { addRouterTools, deviceSnapshot } from "./mcp-device-tools.js";
 
 const HOP_BY_HOP = new Set([
   "connection",
@@ -29,6 +31,14 @@ function filteredHeaders(headers) {
     }
   }
   return output;
+}
+
+function peerForwardedHeaders(headers = {}) {
+  const forwarded = {};
+  for (const key of ["content-type", "accept", "mcp-protocol-version", "mcp-session-id", "mcp-method", "mcp-name"]) {
+    if (typeof headers[key] === "string") forwarded[key] = headers[key];
+  }
+  return forwarded;
 }
 
 function bufferedRequest(config, request, body, {
@@ -106,29 +116,52 @@ async function routeMcpRequest(req, res, config, runtime) {
     return false;
   }
 
+  const deviceToolCall = !Array.isArray(payload) && payload?.method === "tools/call" &&
+    payload.params?.name === "codassol_list_devices";
+  if (deviceToolCall) {
+    if (!await validateOuterAuthorization(config, req)) {
+      sendJson(res, 401, { error: "unauthorized" });
+      return true;
+    }
+    const data = deviceSnapshot(runtime, await probeBackend(config));
+    sendJson(res, 200, {
+      jsonrpc: "2.0", id: payload.id,
+      result: { content: [{ type: "text", text: JSON.stringify(data) }], structuredContent: data }
+    });
+    return true;
+  }
+
+  await runtime.peerMesh?.recoverBindings(payload);
+
   const decision = decideMcpRoute(payload, runtime);
+  const routedPayload = rewriteMcpRequest(payload, decision);
+  const forwardedBody = routedPayload === payload ? body : Buffer.from(JSON.stringify(routedPayload));
   let response;
   if (decision.deviceId === runtime.localDeviceId) {
-    response = await bufferedRequest(config, req, body);
+    response = await bufferedRequest(config, req, forwardedBody);
   } else {
     const authorized = await validateOuterAuthorization(config, req);
     if (!authorized) {
       sendJson(res, 401, { error: "unauthorized" });
       return true;
     }
-    const remote = await runtime.agentHub.enqueue(
-      decision.deviceId,
-      {
+    const job = {
         type: "devspace-http",
         request: {
           method: req.method,
           path: req.url,
-          headers: filteredHeaders(req.headers),
-          bodyBase64: body.toString("base64")
+          // The caller's local DevSpace OAuth bearer must never leave its
+          // Router. The executing node obtains its own local credential.
+          headers: peerForwardedHeaders(req.headers),
+          bodyBase64: forwardedBody.toString("base64")
         }
-      },
-      { timeoutMs: Math.max(config.backendTimeoutMs, 60_000) }
-    );
+      };
+    const remote = runtime.peerMesh?.peers.has(decision.deviceId)
+      ? await runtime.peerMesh.execute(decision.deviceId, job)
+      : await runtime.agentHub.enqueue(
+          decision.deviceId, job,
+          { timeoutMs: Math.max(config.backendTimeoutMs, 60_000) }
+        );
     response = {
       statusCode: remote.statusCode,
       headers: remote.statusCode === 401
@@ -142,14 +175,173 @@ async function routeMcpRequest(req, res, config, runtime) {
     };
   }
 
-  if (decision.openWorkspaceCalls.length) {
+  if (decision.openWorkspaceCalls.length && response.statusCode >= 200 && response.statusCode < 300) {
     const responsePayload = parseMcpResponseBody(
       response.headers["content-type"],
       response.body
     );
     await bindOpenWorkspaceResponses(responsePayload, decision, runtime);
   }
+  if (!Array.isArray(payload) && payload?.method === "tools/list" &&
+      response.statusCode >= 200 && response.statusCode < 300) {
+    const parsed = parseMcpResponseBody(response.headers["content-type"], response.body);
+    const enriched = addRouterTools(parsed);
+    if (enriched !== parsed) {
+      response = {
+        ...response,
+        headers: { ...response.headers, "content-type": "application/json; charset=utf-8" },
+        body: Buffer.from(JSON.stringify(enriched))
+      };
+      delete response.headers["content-length"];
+    }
+  }
   writeBufferedResponse(res, response);
+  return true;
+}
+
+async function handlePeerRoute(req, res, config, runtime) {
+  if (!runtime || !req.url?.startsWith("/_codassol/peer/")) return false;
+  if (!runtime.privateState.verifyPeerToken(bearerToken(req))) {
+    sendJson(res, 401, { error: "invalid_peer_token" });
+    return true;
+  }
+  if (req.url === "/_codassol/peer/info" && req.method === "GET") {
+    const local = runtime.devices.get(runtime.localDeviceId);
+    sendJson(res, 200, {
+      protocol: 2, catalogVersion: 1, id: runtime.localDeviceId,
+      installationId: runtime.privateState.installationId,
+      label: runtime.catalog.get(runtime.localDeviceId)?.name || local.label,
+      platform: local.platform, roots: local.roots,
+      backendReachable: await probeBackend(config)
+    });
+    return true;
+  }
+  if (req.url === "/_codassol/peer/catalog") {
+    if (req.method === "GET") {
+      sendJson(res, 200, runtime.catalog.snapshot());
+      return true;
+    }
+    if (req.method === "POST") {
+      const snapshot = await readJsonBody(req, { maxBytes: 512_000 });
+      const changed = await runtime.catalog.merge(snapshot);
+      sendJson(res, 200, { ok: true, changed });
+      return true;
+    }
+  }
+  if (req.url.startsWith("/_codassol/peer/binding?") && req.method === "GET") {
+    const id = new URL(req.url, "http://localhost").searchParams.get("workspace_id");
+    const binding = id ? runtime.bindings.get(id) : null;
+    const localBinding = binding?.deviceId === runtime.localDeviceId ? binding : null;
+    sendJson(res, 200, localBinding
+      ? { found: true, deviceId: localBinding.deviceId, root: localBinding.root, mode: localBinding.mode }
+      : { found: false });
+    return true;
+  }
+  if (req.url === "/_codassol/peer/execute" && req.method === "POST") {
+    const job = await readJsonBody(req, { maxBytes: 40_000_000 });
+    const request = job?.request;
+    if (job?.type !== "devspace-http" || request?.method !== "POST" ||
+        request?.path !== "/mcp" || typeof request.bodyBase64 !== "string" ||
+        !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(request.bodyBase64)) {
+      sendJson(res, 400, { error: "invalid_peer_request" });
+      return true;
+    }
+    const body = Buffer.from(request.bodyBase64, "base64");
+    if (body.length > 20_000_000) {
+      sendJson(res, 413, { error: "peer_request_too_large" });
+      return true;
+    }
+    const parsed = JSON.parse(body.toString("utf8"));
+    const response = await runtime.peerOAuth.authorizedFetch("/mcp", {
+      method: "POST", headers: peerForwardedHeaders(request.headers), body
+    });
+    const resultBody = Buffer.from(await response.arrayBuffer());
+    const responseHeaders = Object.fromEntries(response.headers.entries());
+    if (response.ok) {
+      const calls = (Array.isArray(parsed) ? parsed : [parsed])
+        .filter((message) => message?.method === "tools/call" && message.params?.name === "open_workspace")
+        .map((message) => ({ requestId: message.id, deviceId: runtime.localDeviceId }));
+      if (calls.length) {
+        const responsePayload = parseMcpResponseBody(response.headers.get("content-type"), resultBody);
+        await bindOpenWorkspaceResponses(responsePayload, { openWorkspaceCalls: calls }, runtime);
+      }
+    }
+    sendJson(res, 200, {
+      statusCode: response.status,
+      headers: filteredHeaders(responseHeaders),
+      bodyBase64: resultBody.toString("base64")
+    });
+    return true;
+  }
+  sendJson(res, 404, { error: "peer_route_not_found" });
+  return true;
+}
+
+async function handleDeviceRoute(req, res, config, runtime) {
+  if (!runtime || !req.url?.startsWith("/_codassol/devices")) return false;
+  if (!runtime.privateState.verifyAdminToken(bearerToken(req))) {
+    sendJson(res, 401, { error: "invalid_admin_token" });
+    return true;
+  }
+  if (req.url === "/_codassol/devices" && req.method === "GET") {
+    const localBackend = await probeBackend(config);
+    const devices = runtime.catalog.list().map((entry) => {
+      const routing = runtime.devices.get(entry.id);
+      const local = entry.id === runtime.localDeviceId;
+      const peer = runtime.peerMesh?.peers.has(entry.id);
+      const health = peer ? runtime.peerMesh.peerHealth.get(entry.id) : null;
+      const status = local
+        ? (localBackend ? "online" : "degraded")
+        : peer && health?.reachable && !health.backendReachable
+          ? "degraded"
+          : routing?.online ? "online"
+            : routing || peer || entry.kind === "agent" ? "offline" : "unknown";
+      return {
+        id: entry.id,
+        installationId: entry.installationId,
+        name: entry.name,
+        platform: entry.platform,
+        kind: entry.kind,
+        isThisDevice: local,
+        status,
+        online: status === "online",
+        // Agent heartbeat only proves control-plane reachability. The legacy
+        // Agent may poll successfully while its local DevSpace is down.
+        // Reserve backendReachable for an independently checked backend.
+        backendReachable: local ? localBackend : peer ? (health?.reachable ? health.backendReachable === true : null)
+          : null,
+        // A health probe is not equivalent to open_workspace + command execution.
+        // No current Registry writer supplies a fresh end-to-end proof.
+        executionVerified: null,
+        lastSeenAt: local ? Date.now() : peer ? (health?.lastOnlineAt ?? null)
+          : routing?.lastSeenAt ?? null,
+        revision: entry.rename?.revision ?? null
+      };
+    });
+    devices.sort((a, b) => Number(b.isThisDevice) - Number(a.isThisDevice) ||
+      a.name.localeCompare(b.name, "en"));
+    sendJson(res, 200, { version: 1, localDeviceId: runtime.localDeviceId, devices });
+    return true;
+  }
+
+  if (req.url.startsWith("/_codassol/devices/") && req.method === "PATCH") {
+    const suffix = req.url.slice("/_codassol/devices/".length);
+    if (!suffix || suffix.includes("/") || suffix.includes("?") || suffix.includes("#")) {
+      sendJson(res, 400, { error: "invalid_device_id" });
+      return true;
+    }
+    const id = decodeURIComponent(suffix);
+    const body = await readJsonBody(req, { maxBytes: 2048 });
+    const device = await runtime.catalog.rename(id, body?.name);
+    if (!device) {
+      sendJson(res, 404, { error: "device_not_registered" });
+      return true;
+    }
+    const sync = await runtime.peerMesh?.publishCatalog() || { attempted: 0, delivered: 0 };
+    sendJson(res, 200, { ok: true, device: { id: device.id, name: device.name }, sync });
+    return true;
+  }
+  sendJson(res, 405, { error: "device_route_not_found" });
   return true;
 }
 
@@ -205,7 +397,18 @@ async function handleAgentRoute(req, res, runtime) {
       return true;
     }
     const body = await readJsonBody(req);
+    if (body.id === runtime.localDeviceId || runtime.peerMesh?.peers.has(body.id) ||
+        (runtime.catalog.get(body.id) && !runtime.privateState.getAgent(body.id))) {
+      sendJson(res, 409, { error: "device_id_reserved_by_router_node" });
+      return true;
+    }
     const enrolled = await runtime.privateState.enrollAgent(body);
+    await runtime.catalog.observe({
+      id: enrolled.agent.id,
+      defaultName: enrolled.agent.label,
+      platform: enrolled.agent.platform,
+      kind: "agent"
+    });
     runtime.devices.register({
       id: enrolled.agent.id,
       label: enrolled.agent.label,
@@ -226,6 +429,10 @@ async function handleAgentRoute(req, res, runtime) {
   const identity = agentIdentity(runtime, req);
   if (!identity) {
     sendJson(res, 401, { error: "invalid_agent_token" });
+    return true;
+  }
+  if (identity.id === runtime.localDeviceId || runtime.peerMesh?.peers.has(identity.id)) {
+    sendJson(res, 409, { error: "device_id_reserved_by_router_node" });
     return true;
   }
 
@@ -263,6 +470,24 @@ async function handleAgentRoute(req, res, runtime) {
 
 export function createRouterServer(config = loadConfig(), runtime = null) {
   return http.createServer(async (req, res) => {
+    try {
+      if (await handlePeerRoute(req, res, config, runtime)) return;
+    } catch (error) {
+      sendJson(res, 502, {
+        error: "peer_request_failed",
+        message: error instanceof Error ? error.message : String(error)
+      });
+      return;
+    }
+    try {
+      if (await handleDeviceRoute(req, res, config, runtime)) return;
+    } catch (error) {
+      sendJson(res, 400, {
+        error: "device_request_failed",
+        message: error instanceof Error ? error.message : String(error)
+      });
+      return;
+    }
     try {
       if (await handleAgentRoute(req, res, runtime)) return;
     } catch (error) {
@@ -350,10 +575,13 @@ export async function startRouter(config = loadConfig(), runtime = null) {
   const activeRuntime = runtime || await createRouterRuntime(config);
   const server = createRouterServer(config, activeRuntime);
   server.codassolRuntime = activeRuntime;
+  server.on("close", () => activeRuntime.peerMesh?.stop());
   await new Promise((resolve, reject) => {
     server.once("error", reject);
     server.listen(config.listenPort, config.listenHost, resolve);
   });
+  await activeRuntime.peerMesh?.refresh();
+  activeRuntime.peerMesh?.start();
   return server;
 }
 

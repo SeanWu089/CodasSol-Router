@@ -2,9 +2,12 @@ import os from "node:os";
 import path from "node:path";
 import { AgentHub } from "./agent-hub.js";
 import { DeviceRegistry } from "./device-registry.js";
+import { DeviceCatalog } from "./device-catalog.js";
 import { defaultStateDir, RouterPrivateState } from "./private-state.js";
 import { RoutingPolicy } from "./routing-policy.js";
 import { WorkspaceBindingStore } from "./workspace-bindings.js";
+import { PeerMesh } from "./peer-mesh.js";
+import { createRouterPeerOAuth } from "./router-peer-oauth.js";
 
 export async function createRouterRuntime(config, {
   clock = () => Date.now(),
@@ -15,6 +18,25 @@ export async function createRouterRuntime(config, {
   await privateState.init();
 
   const devices = new DeviceRegistry({ clock, heartbeatTtlMs });
+  const catalog = await new DeviceCatalog({
+    stateDir,
+    origin: config.localDeviceId || "local"
+  }).load();
+  await catalog.observe({
+    id: config.localDeviceId || "local",
+    installationId: privateState.installationId,
+    defaultName: config.localDeviceLabel || os.hostname(),
+    platform: process.platform,
+    kind: "router"
+  });
+  for (const agent of privateState.listAgents()) {
+    await catalog.observe({
+      id: agent.id,
+      defaultName: agent.label,
+      platform: agent.platform,
+      kind: "agent"
+    });
+  }
   devices.register({
     id: config.localDeviceId || "local",
     label: config.localDeviceLabel || os.hostname(),
@@ -35,14 +57,28 @@ export async function createRouterRuntime(config, {
   });
   await bindings.load();
 
-  return {
+  const runtime = {
     stateDir,
     privateState,
+    catalog,
     devices,
     bindings,
     routing: new RoutingPolicy({ devices, bindings }),
     agentHub: new AgentHub(),
-    localDeviceId: config.localDeviceId || "local"
+    localDeviceId: config.localDeviceId || "local",
+    peerOAuth: await createRouterPeerOAuth(config, stateDir)
   };
+  runtime.peerMesh = await PeerMesh.load(runtime, config);
+  for (const peer of runtime.peerMesh.peers.values()) {
+    await catalog.observe({
+      id: peer.id,
+      defaultName: peer.label,
+      // Peer configuration is a hint; platform becomes authoritative only
+      // after authenticating the peer's own /peer/info response.
+      platform: "unknown",
+      kind: "router"
+    });
+  }
+  return runtime;
 }
 

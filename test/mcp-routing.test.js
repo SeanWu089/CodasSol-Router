@@ -5,7 +5,8 @@ import {
   bindOpenWorkspaceResponses,
   decideMcpRoute,
   McpRoutingError,
-  parseMcpResponseBody
+  parseMcpResponseBody,
+  rewriteMcpRequest
 } from "../src/mcp-routing.js";
 import { RoutingPolicy } from "../src/routing-policy.js";
 import { WorkspaceBindingStore } from "../src/workspace-bindings.js";
@@ -130,5 +131,35 @@ test("SSE DevSpace response can be parsed for workspace binding", async () => {
   const parsed = parseMcpResponseBody("text/event-stream", Buffer.from(sse));
   await bindOpenWorkspaceResponses(parsed, decision, runtime);
   assert.equal(runtime.bindings.get("ws_sse").deviceId, "windows");
+});
+
+test("home expansion is forwarded to DevSpace as a real Mac path", () => {
+  const runtime = runtimeFixture();
+  runtime.devices.unregister("windows");
+  const original = toolCall(60, "open_workspace", { path: "~/Desktop/MyProject" });
+  const selected = decideMcpRoute(original, runtime);
+  assert.equal(selected.deviceId, "local");
+  const forwarded = rewriteMcpRequest(original, selected);
+  assert.equal(forwarded.params.arguments.path, "/Users/example/Desktop/MyProject");
+  assert.equal(original.params.arguments.path, "~/Desktop/MyProject");
+});
+
+test("explicit Windows device metadata is stripped before forwarding", () => {
+  const runtime = runtimeFixture();
+  const original = toolCall(61, "open_workspace", {
+    path: "~/Desktop", device_id: "windows"
+  });
+  const selected = decideMcpRoute(original, runtime);
+  assert.equal(selected.deviceId, "windows");
+  assert.deepEqual(rewriteMcpRequest(original, selected).params.arguments,
+    { path: "C:\\Users\\Example\\Desktop" });
+});
+
+test("unroutable requests are rejected before DevSpace sees them", () => {
+  const runtime = runtimeFixture();
+  assert.throws(
+    () => decideMcpRoute(toolCall(62, "open_workspace", { path: "D:\\Secret" }), runtime),
+    (error) => error.code === "NO_DEVICE_MATCH"
+  );
 });
 

@@ -1,4 +1,4 @@
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -46,13 +46,27 @@ export class RouterPrivateState {
       this.#state = {
         version: 1,
         pairingToken: parsed.pairingToken,
+        peerToken: typeof parsed.peerToken === "string" && parsed.peerToken.length >= 32
+          ? parsed.peerToken : randomSecret(),
+        adminToken: typeof parsed.adminToken === "string" && parsed.adminToken.length >= 32
+          ? parsed.adminToken : randomSecret(),
+        installationId: typeof parsed.installationId === "string" && parsed.installationId.length >= 16
+          ? parsed.installationId : randomUUID(),
         agents: parsed.agents && typeof parsed.agents === "object" ? parsed.agents : {}
       };
+      if (typeof parsed.peerToken !== "string" || parsed.peerToken.length < 32 ||
+          typeof parsed.adminToken !== "string" || parsed.adminToken.length < 32 ||
+          typeof parsed.installationId !== "string" || parsed.installationId.length < 16) {
+        await this.#persist();
+      }
     } catch (error) {
       if (error?.code !== "ENOENT") throw error;
       this.#state = {
         version: 1,
         pairingToken: randomSecret(),
+        peerToken: randomSecret(),
+        adminToken: randomSecret(),
+        installationId: randomUUID(),
         agents: {}
       };
       await this.#persist();
@@ -63,6 +77,31 @@ export class RouterPrivateState {
   get pairingToken() {
     if (!this.#state) throw new Error("RouterPrivateState.init() must be called first");
     return this.#state.pairingToken;
+  }
+
+  get peerToken() {
+    if (!this.#state) throw new Error("RouterPrivateState.init() must be called first");
+    return this.#state.peerToken;
+  }
+
+  get adminToken() {
+    if (!this.#state) throw new Error("RouterPrivateState.init() must be called first");
+    return this.#state.adminToken;
+  }
+
+  get installationId() {
+    if (!this.#state) throw new Error("RouterPrivateState.init() must be called first");
+    return this.#state.installationId;
+  }
+
+  verifyAdminToken(token) {
+    if (!this.#state || typeof token !== "string" || !token) return false;
+    return equalSecretHashes(hashSecret(token), hashSecret(this.#state.adminToken));
+  }
+
+  verifyPeerToken(token) {
+    if (!this.#state || typeof token !== "string" || !token) return false;
+    return equalSecretHashes(hashSecret(token), hashSecret(this.#state.peerToken));
   }
 
   listAgents() {

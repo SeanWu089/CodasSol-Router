@@ -112,4 +112,3 @@ V0 is considered proven only when all of the following pass on the physical RedM
 - Background service.
 
 Those belong to later iterations after the physical Android connectivity path is proven.
-

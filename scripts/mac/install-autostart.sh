@@ -6,7 +6,9 @@ LABEL="com.codassol.router"
 UID_VALUE="$(id -u)"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
-NODE_BIN="$(command -v node)"
+# fnm may expose Node through a short-lived multishell path. launchd needs a
+# persistent executable path that survives terminal sessions and logins.
+NODE_BIN="$(node -p 'process.execPath')"
 STATE_DIR="${CODASSOL_STATE_DIR:-$HOME/.codassol}"
 RUNTIME_DIR="${CODASSOL_RUNTIME_DIR:-$HOME/.local/share/codassol-router}"
 PLIST_DIR="$HOME/Library/LaunchAgents"
@@ -69,7 +71,20 @@ EOF
 
 chmod 600 "$PLIST_PATH"
 plutil -lint "$PLIST_PATH" >/dev/null
-launchctl bootstrap "gui/$UID_VALUE" "$PLIST_PATH"
+BOOTSTRAPPED=false
+for _ in {1..8}; do
+  if launchctl bootstrap "gui/$UID_VALUE" "$PLIST_PATH" >/dev/null 2>&1; then
+    BOOTSTRAPPED=true
+    break
+  fi
+  # launchd can briefly retain the prior label after bootout; retry before
+  # treating the service-registration error as fatal.
+  sleep 0.5
+done
+if [[ "$BOOTSTRAPPED" != true ]]; then
+  launchctl bootstrap "gui/$UID_VALUE" "$PLIST_PATH"
+  exit 1
+fi
 launchctl kickstart -k "gui/$UID_VALUE/$LABEL"
 
 for _ in {1..30}; do
