@@ -1,5 +1,58 @@
 # Thoughts
 
+## v0.3 transport decision — lightweight Single Ingress (2026-10-10)
+
+**Architecture keywords:** `Single Stable MCP URL` · `Sticky Leader` ·
+`Passive Failover` · `HTTPS SSE (Server-Sent Events)` ·
+`Outbound-Only Agent` · `HTTP POST Result` · `Heartbeat/Keepalive` ·
+`Reconnect + Exponential Backoff + Jitter` · `Endpoint Exclusivity (no Pooling)` ·
+`Fencing/Single Active Ingress` · `OAuth Continuity` ·
+`Device Registry` · `Workspace Affinity` · `Intelligent Routing` ·
+`Fail Closed` · `No Command Replay`.
+
+- **Decision (design baseline, not yet production-validated):** prefer one
+  authenticated outbound HTTPS SSE stream per standby device to the *current*
+  Router over the single public ngrok URL. Ingress pushes task/heartbeat events;
+  device executes only its own authorized local DevSpace tasks and reports
+  results via normal HTTPS POST. Empty idle periods need no new HTTP request.
+  Keep SSE connection health distinct from actual endpoint-ownership authority.
+- **Stable ownership:** whichever eligible node currently holds the public
+  hostname keeps it (Sticky Leader); no proactive re-election, no preferred
+  permanent Mac, and a recovered former leader stays standby. On suspected
+  failure, check local connectivity, attempt *non-pooled, provider-exclusive*
+  hostname acquisition with bounded backoff/jitter, and confirm identity before
+  serving MCP. Never activate two owners. ngrok's exclusivity/release/fencing
+  behavior is **not yet proven** in real Mac↔Windows cutover tests.
+- **Budget:** ngrok Free lists 20k HTTPS requests and 1 GB transfer/month
+  (account-wide); a stream's periodic SSE comment frames are not separate HTTP
+  requests but do consume bytes. If reconnecting hourly, one standby uses
+  ~720 stream-opening requests/30 days; frequent disconnects can raise this
+  substantially. Measure actual usage and streaming timeouts, not estimates.
+- **Historical distinction:** original v0.1 Windows Agent used HTTPS outbound
+  `agent/heartbeat`, `agent/poll`, `agent/result` through Mac's ngrok URL:
+  **no Tailscale required**. v0.2 also added a direct peer-Router HTTPS path
+  over Tailscale as *one implementation*, not a product prerequisite. Prefer
+  minimal incremental evolution of the original queue/auth/agent protocol.
+- **Why not alternatives:** high-frequency short polling costs too many
+  requests; HTTP long polling remains the compatibility fallback; WebSocket
+  adds unnecessary bidirectional channel management for simple text tasks;
+  ngrok Endpoint Pooling load-balances incoming MCP requests across replicas,
+  breaking our sticky single-owner assumption without shared session/state.
+  Fully cloud-hosted coordination and extra per-device public endpoints are
+  intentionally out of scope for this lightweight baseline.
+- **Failure/safety limitations:** SSE disconnect alone does not prove the
+  leader died. Network partitions, ngrok delayed release, proxy buffering,
+  stream idle timeouts, reconnection storms and Mac/Windows OAuth token
+  interoperability must be tested. An in-flight or mutating command is never
+  automatically retried after an ownership change. If ngrok does not enforce
+  adequate ownership fencing, a small authoritative external claim mechanism
+  is required; do not ship an unsafe dual-owner approximation.
+- **Source references (checked 2026-10-10):**
+  https://ngrok.com/pricing ;
+  https://ngrok.com/compare/cloudflare-tunnel ;
+  https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events ;
+  https://ngrok.com/blog/self-hosting-with-and-without-ngrok .
+
 ## Two core pillars — Intelligent Routing + Dynamic Ingress (2026-10-10)
 
 - **Product goal:** from ChatGPT (web, Codex, or mobile) anywhere, access and
