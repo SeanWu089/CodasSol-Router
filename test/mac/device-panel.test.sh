@@ -9,6 +9,7 @@ cleanup() {
 trap cleanup EXIT
 TOKEN="test-mac-device-panel-local-secret-123456789"
 printf '{"adminToken":"%s","agents":{"legacy-win":{"label":"Office PC","platform":"win32","tokenHash":"not-exposed"}}}' "$TOKEN" > "$TEMP/router.json"
+printf '[{"id":"peer-win","label":"Other Windows","platform":"win32","token":"secret-not-displayed"}]' > "$TEMP/peers.json"
 node "$ROOT/scripts/mac/test-support/device-panel-fixture.cjs" "$TEMP/live.port" registry "$TOKEN" &
 LIVE_PID=$!
 node "$ROOT/scripts/mac/test-support/device-panel-fixture.cjs" "$TEMP/old.port" legacy "$TOKEN" &

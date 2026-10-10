@@ -5,7 +5,8 @@ import SwiftUI
 @MainActor
 final class DevicePanelModel: ObservableObject {
     @Published private(set) var devices: [DeviceInfo] = []
-    @Published private(set) var directoryMessage = "Checking registered devices…"
+    @Published private(set) var directoryMessage = ""
+    @Published private(set) var canRenameDevices = false
     @Published private(set) var lastUpdated: Date?
     @Published private(set) var devspace = RouterHealth(connected: false, backendReachable: false)
     @Published private(set) var router = RouterHealth(connected: false, backendReachable: false)
@@ -49,44 +50,52 @@ final class DevicePanelModel: ObservableObject {
         router = await routerStatus
         onStatusChange?(devspace.connected && router.connected && router.backendReachable)
         devspaceManaged = await Task.detached(priority: .utility) {
-            DevSpaceManager().isManaged()
+            DevSpaceManager().ownsRunningDevSpace()
         }.value
 
         if !router.connected {
             devices = devices.filter { !$0.isThisDevice }.map { $0.withUnknownStatus() }
-            directoryMessage = "Router unavailable · device statuses unknown"
+            canRenameDevices = false
+            lastUpdated = nil
+            directoryMessage = "Router unavailable"
             return
         }
 
         do {
             let live = try await client.devices()
             devices = live
+            canRenameDevices = true
             lastUpdated = Date()
             directoryMessage = ""
         } catch DirectoryFailure.noAdminToken {
             devices = client.legacyRegistrations()
-            directoryMessage = "Registry v1 not deployed · legacy devices unverified"
+            canRenameDevices = false
+            lastUpdated = nil
+            directoryMessage = ""
         } catch DirectoryFailure.notInstalled {
             devices = client.legacyRegistrations()
-            directoryMessage = "Registry v1 not deployed · legacy devices unverified"
+            canRenameDevices = false
+            lastUpdated = nil
+            directoryMessage = ""
         } catch DirectoryFailure.unauthorized {
             devices = []
-            directoryMessage = "Device directory access is not authorized."
+            canRenameDevices = false
+            lastUpdated = nil
+            directoryMessage = "Device list unavailable"
         } catch {
             devices = devices.filter { !$0.isThisDevice }.map { $0.withUnknownStatus() }
-            directoryMessage = "Directory unreachable · showing unverified devices"
+            canRenameDevices = false
+            lastUpdated = nil
+            directoryMessage = "Device status unavailable"
         }
     }
 
     func saveName() async {
         guard let device = selected else { return }
+        guard canRenameDevices else { return }
         let next = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !next.isEmpty, next.count <= 80, !next.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) else {
             actionMessage = "Name must contain 1–80 printable characters."
-            return
-        }
-        guard device.id != "__local_preview__" else {
-            actionMessage = "Install Device Registry v1 before renaming."
             return
         }
         busy = true
@@ -230,14 +239,16 @@ struct DevicePanelView: View {
                     Circle().fill(statusColor(device.status)).frame(width: 8, height: 8)
                     Text(statusTitle(device.status)).font(.system(size: 11)).foregroundColor(.secondary)
                 }
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("DEVICE NAME").font(.system(size: 10, weight: .semibold)).foregroundColor(.secondary)
-                    HStack {
-                        TextField("Device name", text: $model.renameText)
-                            .textFieldStyle(.roundedBorder)
-                            .onSubmit { Task { await model.saveName() } }
-                        Button("Save") { Task { await model.saveName() } }
-                            .disabled(model.busy || device.id == "__local_preview__")
+                if model.canRenameDevices && device.id != "__local_preview__" {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("DEVICE NAME").font(.system(size: 10, weight: .semibold)).foregroundColor(.secondary)
+                        HStack {
+                            TextField("Device name", text: $model.renameText)
+                                .textFieldStyle(.roundedBorder)
+                                .onSubmit { Task { await model.saveName() } }
+                            Button("Save") { Task { await model.saveName() } }
+                                .disabled(model.busy)
+                        }
                     }
                 }
                 VStack(alignment: .leading, spacing: 6) {

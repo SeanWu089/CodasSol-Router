@@ -363,9 +363,9 @@ Finder app icon retains the existing **blue Sean icon**.
 Device Registry v1 API (`/_codassol/devices`) from **loopback only**, taking
 the local admin bearer from the private `~/.codassol/router.json` state file.
 It never forwards this token to remote devices. Until Registry v1 is deployed,
-the UI falls back to the **actual local Router agent registrations** in the
-same private file, marking their state **Unknown** (legacy registrations have
-no reliable recent heartbeat data) and disabling remote rename. The local
+the UI falls back to **actual local Router Agent and Peer registrations** in
+the private state and peers files, marking their state **Unknown** (legacy
+registrations have no reliable recent heartbeat data) and disabling remote rename. The local
 Router and DevSpace statuses are still probed live. With Registry v1 installed,
 local-first status and authenticated rename become available without replacing
 the menu UI. No production Router restart or protocol migration is required
@@ -376,6 +376,13 @@ listing and rename, legacy 404, wrong credentials, and saved legacy records,
 in addition to existing macOS LaunchAgent and migration regression checks.
 The real Mac/Windows multi-node Registry deployment and login-reboot test
 remain separate, potentially disruptive integration stages.
+
+**v0.3.1 polish:** The normal device list does not show Registry deployment or
+developer diagnostic messages. Previously enrolled Agent and configured Peer
+records both appear; an unregistered phone does not. Legacy detail names are
+read-only instead of offering a save button that could not succeed. The Stop
+button is only available after confirming the managed LaunchAgent PID matches
+the actual TCP/7676 listening process, not merely a loaded service definition.
 
 ### CodasSol-mac v0.2 (pre-migration)
 

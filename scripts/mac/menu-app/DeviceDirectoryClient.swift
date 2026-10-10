@@ -80,21 +80,38 @@ struct DeviceDirectoryClient {
         return token
     }
 
-    /// Read only display metadata from legacy local Router registrations.
-    /// Heartbeat timestamps aren't persisted, so status MUST remain unknown.
+    /// Read only display metadata from legacy Agent *and Peer* registrations.
+    /// Neither source stores trustworthy freshness, so status MUST be unknown.
     func legacyRegistrations() -> [DeviceInfo] {
-        guard let data = try? Data(contentsOf: stateFile),
-              let state = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let agents = state["agents"] as? [String: [String: Any]] else { return [] }
-        return agents.compactMap { id, record in
-            guard !id.isEmpty, id.count <= 128 else { return nil }
+        let state = ((try? Data(contentsOf: stateFile)).flatMap {
+            try? JSONSerialization.jsonObject(with: $0) as? [String: Any]
+        }) ?? [:]
+        let agents = state["agents"] as? [String: [String: Any]] ?? [:]
+        var entries: [String: DeviceInfo] = [:]
+        for (id, record) in agents {
+            guard !id.isEmpty, id.count <= 128 else { continue }
             let label = record["label"] as? String ?? id
             let platform = record["platform"] as? String ?? "unknown"
-            return DeviceInfo(id: id, installationId: nil,
+            entries[id] = DeviceInfo(id: id, installationId: nil,
                               name: label.isEmpty ? id : label, platform: platform,
                               kind: "agent", isThisDevice: false, status: "unknown",
                               online: false, backendReachable: false, lastSeenAt: nil)
-        }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        }
+        let peersPath = stateFile.deletingLastPathComponent().appendingPathComponent("peers.json")
+        if let data = try? Data(contentsOf: peersPath),
+           let peers = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
+            for peer in peers {
+                guard let id = peer["id"] as? String, !id.isEmpty, id.count <= 128,
+                      entries[id] == nil else { continue }
+                let label = peer["label"] as? String ?? id
+                entries[id] = DeviceInfo(id: id, installationId: nil,
+                    name: label.isEmpty ? id : label,
+                    platform: peer["platform"] as? String ?? "unknown", kind: "router",
+                    isThisDevice: false, status: "unknown", online: false,
+                    backendReachable: false, lastSeenAt: nil)
+            }
+        }
+        return entries.values.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
     private func fetch(_ endpoint: String, method: String = "GET", payload: Data? = nil) async throws -> Data {

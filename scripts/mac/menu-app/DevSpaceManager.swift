@@ -41,6 +41,24 @@ struct DevSpaceManager {
         launchctl(["print", "\(domain)/\(label)"]).code == 0
     }
 
+    /// A loaded LaunchAgent alone does not prove it owns the DevSpace listener.
+    /// Require the launchd PID to match the sole TCP/7676 process before
+    /// enabling Stop, to protect an independently started DevSpace.
+    func ownsRunningDevSpace() -> Bool {
+        let service = launchctl(["print", "\(domain)/\(label)"])
+        guard service.code == 0 else { return false }
+        let pids = service.output.split(separator: "\n").compactMap { line -> Int32? in
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard trimmed.hasPrefix("pid = ") else { return nil }
+            return Int32(trimmed.dropFirst(6))
+        }
+        guard pids.count == 1, let managedPID = pids.first else { return false }
+        let listeners = command("/usr/sbin/lsof", ["-nP", "-t", "-iTCP:7676", "-sTCP:LISTEN"])
+        guard listeners.code == 0 else { return false }
+        let ports = listeners.output.split(whereSeparator: \.isNewline).compactMap { Int32($0) }
+        return ports.count == 1 && ports[0] == managedPID
+    }
+
     func diagnostic() -> CommandResult {
         guard let runner = Bundle.main.path(forResource: "devspace-runner", ofType: "zsh") else {
             return CommandResult(code: -1, output: "Bundled DevSpace launcher is missing. Reinstall CodasSol-mac.")
@@ -129,7 +147,7 @@ struct DevSpaceManager {
     }
 
     func stop() -> CommandResult {
-        guard isManaged(), installedPlistMatches() else {
+        guard ownsRunningDevSpace(), installedPlistMatches() else {
             return CommandResult(code: -1, output: "This DevSpace service is external or its config is unrecognized; refusing to stop it.")
         }
         return launchctl(["bootout", "\(domain)/\(label)"])
