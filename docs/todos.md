@@ -1,5 +1,9 @@
 # Todos
 
+- [x] Build a separately installed Windows Router v0.2 candidate with protected legacy install directories, supervised DevSpace startup, authenticated local Router identity verification and opt-in legacy archive/cleanup (no endpoint-protection evasion).
+- [ ] On physical Windows, install/test the standalone Node candidate, verify DevSpace CLI stays present after reboot, confirm port 17678 Router identity and backend execution, then optionally archive old tasks/install directories.
+- [ ] Provision authorized, resilient HTTPS ingress and mutually authenticated node peers to prove ChatGPT/other device → Windows while the Mac is offline; localhost-only Router is not an Internet-accessible client endpoint.
+
 - [x] Promote the Mac Device Registry v1, path-routing fail-closed fix and Mac menu app v0.3.2 into `develop`/`main` after Node + macOS regression suites pass, updating public release-status notes. Do not present the Windows Mac-offline v0.2 milestone as completed.
 - [ ] Keep the root Android worktree's uncommitted `docs/thoughts.md` intact; retire only clean, merged temporary Worktrees, and do not delete the three active dirty development checkouts.
 

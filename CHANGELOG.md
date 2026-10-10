@@ -1,5 +1,15 @@
 # Changelog
 
+## Windows standalone v0.2 preview — install candidate (2026-10-10)
+
+- Package a separate, Mac-independent Windows Router on localhost:17678 with
+  per-node identity, a 7676 DevSpace watchdog, and explicit CLI/health checks.
+- Include opt-in post-verification cleanup that archives old installs and
+  scheduled tasks rather than deleting credentials or silently migrating them.
+- Keep existing Mac/Windows ingress untouched; cross-device HTTPS access,
+  peer enrollment, hospital endpoint security compatibility and physical
+  Mac-offline testing remain **unverified**. This is not the final v0.2 release.
+
 ## Verified Mac integration — 2026-10-10
 
 - Consolidate previously tested Device Registry v1, Mac-side device discovery,
