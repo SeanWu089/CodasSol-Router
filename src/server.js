@@ -35,7 +35,7 @@ function filteredHeaders(headers) {
 
 function peerForwardedHeaders(headers = {}) {
   const forwarded = {};
-  for (const key of ["content-type", "accept", "mcp-protocol-version", "mcp-session-id"]) {
+  for (const key of ["content-type", "accept", "mcp-protocol-version", "mcp-session-id", "mcp-method", "mcp-name"]) {
     if (typeof headers[key] === "string") forwarded[key] = headers[key];
   }
   return forwarded;

@@ -75,3 +75,52 @@ test("MCP client discovers devices and routes a home path without leaking routin
   assert.equal(invalid.body.error, "NO_DEVICE_MATCH");
   assert.equal(seen.length, callsBefore, "incorrect-device paths must never execute on the Mac backend");
 });
+
+test("remote MCP forwarding retains production-compatible method and tool headers", async (t) => {
+  const backend = http.createServer(async (req, res) => {
+    if (req.headers.authorization !== "Bearer authorized-client") {
+      res.writeHead(401).end("unauthorized");
+      return;
+    }
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ jsonrpc: "2.0", id: 1, result: {} }));
+  });
+  const backendPort = await listen(backend);
+  const devices = new DeviceRegistry();
+  devices.register({ id: "local", platform: "darwin", presence: "static", roots: ["/Users/Tester"] });
+  devices.register({ id: "windows", platform: "win32", presence: "static", roots: ["C:\\Users\\Tester"] });
+  const bindings = await new WorkspaceBindingStore().load();
+  let forwarded;
+  const runtime = {
+    localDeviceId: "local", devices, bindings,
+    routing: new RoutingPolicy({ devices, bindings }),
+    peerMesh: {
+      peers: new Map([["windows", {}]]),
+      recoverBindings: async () => {},
+      execute: async (_id, job) => {
+        forwarded = job.request.headers;
+        return {
+          statusCode: 200, headers: { "content-type": "application/json" },
+          bodyBase64: Buffer.from(JSON.stringify({ jsonrpc: "2.0", id: 10, result: {
+            structuredContent: { workspace_id: "ws_remote", root: "C:\\Users\\Tester", mode: "checkout" }
+          } })).toString("base64")
+        };
+      }
+    }
+  };
+  const router = createRouterServer({ backendHost: "127.0.0.1", backendPort,
+    backendTimeoutMs: 2000 }, runtime);
+  const port = await listen(router);
+  t.after(async () => { await close(router); await close(backend); });
+  const response = await fetch(`http://127.0.0.1:${port}/mcp`, {
+    method: "POST", headers: {
+      authorization: "Bearer authorized-client", "content-type": "application/json",
+      "mcp-method": "tools/call", "mcp-name": "open_workspace"
+    }, body: JSON.stringify({ jsonrpc: "2.0", id: 10, method: "tools/call",
+      params: { name: "open_workspace", arguments: { path: "C:\\Users\\Tester", device_id: "windows" } } })
+  });
+  assert.equal(response.status, 200, await response.text());
+  assert.equal(forwarded["mcp-method"], "tools/call");
+  assert.equal(forwarded["mcp-name"], "open_workspace");
+  assert.equal(bindings.get("ws_remote").deviceId, "windows");
+});

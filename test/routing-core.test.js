@@ -158,6 +158,19 @@ test("explicit device selection preserves paths and never silently switches devi
   );
 });
 
+test("only the historical D/E paths use the constrained rootless Windows recovery route", () => {
+  const { devices, policy } = makePolicy();
+  devices.register({ id: "local", platform: "darwin", presence: "static", roots: ["/Users/example"] });
+  devices.register({ id: "SEANSWPC", platform: "win32", presence: "static", roots: [] });
+  assert.equal(policy.resolveOpenWorkspace({ path: "D:\\Repos\\Foo" }).id, "SEANSWPC");
+  assert.equal(policy.resolveOpenWorkspace({ path: "E:/Projects/Foo" }).id, "SEANSWPC");
+  assert.throws(() => policy.resolveOpenWorkspace({ path: "C:/Users/ASUS/Desktop" }),
+    (error) => error.code === "NO_DEVICE_MATCH");
+  devices.register({ id: "otherWindows", platform: "win32", presence: "static", roots: ["C:/Users/Other"] });
+  assert.throws(() => policy.resolveOpenWorkspace({ path: "D:/Repos/Foo" }),
+    (error) => error.code === "NO_DEVICE_MATCH");
+});
+
 test("legacy rootless Windows Agent can be explicitly selected without broadening permissions", () => {
   const { devices, policy } = makePolicy();
   devices.register({ id: "old-win", platform: "win32", presence: "static", roots: [] });
