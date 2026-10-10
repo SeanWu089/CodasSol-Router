@@ -55,6 +55,6 @@ PY
   cd "$out"
   zip -q -r -X "$zipname" "$name"
 )
-shasum -a 256 "$out/$zipname" > "$out/$zipname.sha256"
+( cd "$out" && shasum -a 256 "$zipname" > "$zipname.sha256" )
 print "Built $out/$zipname"
 print "SHA256 $(cat "$out/$zipname.sha256")"
