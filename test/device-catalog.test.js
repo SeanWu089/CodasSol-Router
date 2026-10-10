@@ -249,3 +249,27 @@ test("device status separates a live Router from a degraded local backend", asyn
   assert.equal(list.body.devices.find((d) => d.id === "android-one").name, "RedMagic");
   assert.equal(list.body.devices[0].backendReachable, false);
 });
+
+test("Agent heartbeat online does not assert DevSpace execution readiness", async (t) => {
+  const dir = await tmp(t);
+  const cfg = config("mac", path.join(dir, "mac"), await backend(t));
+  const privateState = await new RouterPrivateState({ stateDir: cfg.stateDir }).init();
+  const enrolled = await privateState.enrollAgent({
+    id: "wins", label: "Windows", platform: "win32", roots: []
+  });
+  const runtime = await createRouterRuntime(cfg);
+  const router = await startRouter(cfg, runtime);
+  t.after(() => new Promise((resolve) => router.close(resolve)));
+  const beat = await fetchJson(router.address().port, "/_codassol/agent/heartbeat", {
+    token: enrolled.token, method: "POST", body: { roots: [], capabilities: ["devspace-http"] }
+  });
+  assert.equal(beat.status, 200);
+  const list = await fetchJson(router.address().port, "/_codassol/devices", {
+    token: privateState.adminToken
+  });
+  const win = list.body.devices.find((d) => d.id === "wins");
+  assert.equal(win.status, "online", "agent control channel has a fresh heartbeat");
+  assert.equal(win.backendReachable, null, "Agent has not proven backend health");
+  assert.equal(win.executionVerified, null, "heartbeat does not verify execution");
+  assert.equal(list.body.devices.find((d) => d.id === "mac").backendReachable, true);
+});

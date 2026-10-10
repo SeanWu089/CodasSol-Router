@@ -138,21 +138,12 @@ final class DevicePanelModel: ObservableObject {
     }
 }
 
-private func statusColor(_ status: String) -> Color {
-    switch status {
-    case "online": return .green
-    case "degraded": return .orange
-    case "offline": return .gray
-    default: return .secondary
-    }
-}
-
-private func statusTitle(_ status: String) -> String {
-    switch status {
-    case "online": return "Connected"
-    case "degraded": return "Degraded"
-    case "offline": return "Offline"
-    default: return "Unknown"
+private func statusColor(_ severity: DeviceInfo.DisplaySeverity) -> Color {
+    switch severity {
+    case .ready: return .green
+    case .caution: return .orange
+    case .offline: return .gray
+    case .unknown: return .secondary
     }
 }
 
@@ -183,8 +174,8 @@ struct DevicePanelView: View {
                     if device.isThisDevice { Text("This device").font(.system(size: 10)).foregroundColor(.secondary) }
                 }
                 Spacer(minLength: 6)
-                Circle().fill(statusColor(device.status)).frame(width: 7, height: 7)
-                Text(statusTitle(device.status))
+                Circle().fill(statusColor(device.displaySeverity)).frame(width: 7, height: 7)
+                Text(device.displayTitle)
                     .font(.system(size: 11)).foregroundColor(.secondary)
                 Image(systemName: "chevron.right")
                     .font(.system(size: 9, weight: .semibold)).foregroundColor(.secondary)
@@ -236,8 +227,8 @@ struct DevicePanelView: View {
                     }.buttonStyle(.plain)
                     Text(device.name).font(.system(size: 15, weight: .semibold)).lineLimit(1)
                     Spacer()
-                    Circle().fill(statusColor(device.status)).frame(width: 8, height: 8)
-                    Text(statusTitle(device.status)).font(.system(size: 11)).foregroundColor(.secondary)
+                    Circle().fill(statusColor(device.displaySeverity)).frame(width: 8, height: 8)
+                    Text(device.displayTitle).font(.system(size: 11)).foregroundColor(.secondary)
                 }
                 if model.canRenameDevices && device.id != "__local_preview__" {
                     VStack(alignment: .leading, spacing: 5) {
@@ -255,7 +246,8 @@ struct DevicePanelView: View {
                     information("Platform", device.platform)
                     information("Device ID", device.id)
                     if let identity = device.installationId { information("Installation", identity) }
-                    information("Backend", device.backendReachable ? "Reachable" : "Not confirmed")
+                    information("Backend", device.backendTitle)
+                    information("Execution", device.executionTitle)
                     if let last = device.lastSeenAt {
                         information("Last seen", Date(timeIntervalSince1970: last / 1000).formatted())
                     }

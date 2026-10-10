@@ -18,6 +18,43 @@ struct DevicePanelClientTest {
         precondition(devices.count == 2)
         precondition(devices[0].id == "mac-id" && devices[0].isThisDevice)
         precondition(devices[1].id == "win-id" && devices[1].status == "offline")
+        func device(_ json: String) -> DeviceInfo {
+            try! JSONDecoder().decode(DeviceInfo.self, from: Data(json.utf8))
+        }
+        let oldAgent = device("""
+        {"id":"agent-win","name":"Wins","platform":"win32","kind":"agent",
+         "isThisDevice":false,"status":"online","online":true,
+         "backendReachable":true,"lastSeenAt":1700000000000}
+        """)
+        precondition(oldAgent.displayTitle == "Agent online")
+        precondition(oldAgent.displaySeverity == .caution)
+        precondition(oldAgent.backendTitle == "Unverified (heartbeat only)")
+        precondition(oldAgent.executionTitle == "Not verified")
+        let newAgent = device("""
+        {"id":"agent-v1","name":"Wins","platform":"win32","kind":"agent",
+         "isThisDevice":false,"status":"online","online":true,
+         "backendReachable":null,"executionVerified":null}
+        """)
+        precondition(newAgent.displayTitle == "Agent online")
+        precondition(newAgent.displaySeverity == .caution)
+        let remotePeer = device("""
+        {"id":"peer-win","name":"Peer","platform":"win32","kind":"router",
+         "isThisDevice":false,"status":"online","online":true,
+         "backendReachable":true}
+        """)
+        precondition(remotePeer.displayTitle == "Unverified" && remotePeer.displaySeverity == .caution)
+        let verifiedLocal = device("""
+        {"id":"mac","name":"Mac","platform":"darwin","kind":"router",
+         "isThisDevice":true,"status":"online","online":true,"backendReachable":true}
+        """)
+        precondition(verifiedLocal.displayTitle == "Ready" && verifiedLocal.displaySeverity == .ready)
+        let degradedLocal = device("""
+        {"id":"mac","name":"Mac","platform":"darwin","kind":"router",
+         "isThisDevice":true,"status":"degraded","online":false,"backendReachable":false}
+        """)
+        precondition(degradedLocal.displayTitle == "Degraded" && degradedLocal.displaySeverity == .caution)
+        precondition(devices[1].displayTitle == "Offline")
+        print("PASS: Agent heartbeat and peer backend health never falsely show execution ready")
         let sync = try await api.rename(id: "win-id", to: "Home GPU")
         precondition(sync.attempted == 2 && sync.delivered == 1)
         print("PASS: valid schema, local-first sorting, offline presence, rename delivery count")

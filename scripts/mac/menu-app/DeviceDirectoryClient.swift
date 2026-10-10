@@ -15,8 +15,49 @@ struct DeviceInfo: Decodable, Identifiable {
     let isThisDevice: Bool
     let status: String
     let online: Bool
-    let backendReachable: Bool
+    // nil means no backend check was performed, which differs from false.
+    let backendReachable: Bool?
+    // A successful heartbeat or HTTP health response is not execution proof.
+    let executionVerified: Bool?
     let lastSeenAt: Double?
+
+    var displayTitle: String {
+        if status == "degraded" { return "Degraded" }
+        if status == "unknown" { return "Unknown" }
+        if status == "offline" || !online { return "Offline" }
+        if isThisDevice { return backendReachable == true ? "Ready" : "Degraded" }
+        if executionVerified == false { return "Execution failed" }
+        if executionVerified == true { return "Ready" }
+        return kind == "agent" ? "Agent online" : "Unverified"
+    }
+
+    enum DisplaySeverity { case ready, caution, offline, unknown }
+
+    var displaySeverity: DisplaySeverity {
+        switch displayTitle {
+        case "Ready": return .ready
+        case "Offline": return .offline
+        case "Unknown": return .unknown
+        default: return .caution
+        }
+    }
+
+    var backendTitle: String {
+        if kind == "agent" { return "Unverified (heartbeat only)" }
+        switch backendReachable {
+        case true: return "Reachable (not execution proof)"
+        case false: return "Unreachable"
+        case nil: return "Not checked"
+        }
+    }
+
+    var executionTitle: String {
+        switch executionVerified {
+        case true: return "Verified"
+        case false: return "Failed"
+        case nil: return "Not verified"
+        }
+    }
 
     static func localFallback(connected: Bool, backend: Bool) -> DeviceInfo {
         DeviceInfo(id: "__local_preview__", installationId: nil,
@@ -24,13 +65,15 @@ struct DeviceInfo: Decodable, Identifiable {
                    kind: "router", isThisDevice: true,
                    status: !connected ? "offline" : backend ? "online" : "degraded",
                    online: connected && backend, backendReachable: backend,
+                   executionVerified: nil,
                    lastSeenAt: nil)
     }
 
     func withUnknownStatus() -> DeviceInfo {
         DeviceInfo(id: id, installationId: installationId, name: name,
                    platform: platform, kind: kind, isThisDevice: isThisDevice,
-                   status: "unknown", online: false, backendReachable: false,
+                   status: "unknown", online: false, backendReachable: nil,
+                   executionVerified: nil,
                    lastSeenAt: lastSeenAt)
     }
 }
@@ -95,7 +138,8 @@ struct DeviceDirectoryClient {
             entries[id] = DeviceInfo(id: id, installationId: nil,
                               name: label.isEmpty ? id : label, platform: platform,
                               kind: "agent", isThisDevice: false, status: "unknown",
-                              online: false, backendReachable: false, lastSeenAt: nil)
+                              online: false, backendReachable: nil,
+                              executionVerified: nil, lastSeenAt: nil)
         }
         let peersPath = stateFile.deletingLastPathComponent().appendingPathComponent("peers.json")
         if let data = try? Data(contentsOf: peersPath),
@@ -108,7 +152,7 @@ struct DeviceDirectoryClient {
                     name: label.isEmpty ? id : label,
                     platform: peer["platform"] as? String ?? "unknown", kind: "router",
                     isThisDevice: false, status: "unknown", online: false,
-                    backendReachable: false, lastSeenAt: nil)
+                    backendReachable: nil, executionVerified: nil, lastSeenAt: nil)
             }
         }
         return entries.values.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }

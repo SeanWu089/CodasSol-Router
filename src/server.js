@@ -305,8 +305,14 @@ async function handleDeviceRoute(req, res, config, runtime) {
         isThisDevice: local,
         status,
         online: status === "online",
-        backendReachable: local ? localBackend : peer ? health?.backendReachable === true
-          : routing?.online === true,
+        // Agent heartbeat only proves control-plane reachability. The legacy
+        // Agent may poll successfully while its local DevSpace is down.
+        // Reserve backendReachable for an independently checked backend.
+        backendReachable: local ? localBackend : peer ? (health?.reachable ? health.backendReachable === true : null)
+          : null,
+        // A health probe is not equivalent to open_workspace + command execution.
+        // No current Registry writer supplies a fresh end-to-end proof.
+        executionVerified: null,
         lastSeenAt: local ? Date.now() : peer ? (health?.lastOnlineAt ?? null)
           : routing?.lastSeenAt ?? null,
         revision: entry.rename?.revision ?? null
