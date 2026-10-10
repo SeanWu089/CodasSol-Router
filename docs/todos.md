@@ -6,8 +6,13 @@
   mobile eligibility limits, ownership fencing, independent public MCP auth,
   fail-closed behavior and acceptance checks; see
   [2026-10-10 design](superpowers/specs/2026-10-10-dynamic-ingress-v0.3-design.md).
-- [ ] Implement shared Core eligibility and ingress state machine with
-  deterministic leader/fencing tests (disabled by default).
+- [x] Implement shared Core eligibility, deterministic candidate preference,
+  fenced-lease ingress state machine, serialized transitions and simulated
+  two-node safety/failure tests (disabled by default; **not** integrated with
+  any production lease authority, endpoint adapter or real network).
+- [ ] Implement an authoritative external claim provider and an endpoint
+  adapter with real provider-enforced fencing before permitting activation.
+  Current Core interfaces deliberately reject unfenced adapters.
 - [ ] Verify real ngrok same-domain non-pooled exclusivity, ownership and
   orphaned-agent release under two hosts; do **not** reconfigure production
   ingress before those experiments.

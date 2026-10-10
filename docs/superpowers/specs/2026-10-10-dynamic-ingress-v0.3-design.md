@@ -1,6 +1,7 @@
 # CodasSol Core v0.3 — Dynamic Ingress
 
-**Status:** architecture approved; implementation in progress (not deployed).
+**Status:** architecture approved; first pure-Core slice implemented and
+tested, **not deployed**. Real ngrok claim/fencing remains unverified.
 **Principle:** **Route the Project, Not Devices.**
 **Milestone:** **Single Endpoint · Dynamic Ingress · Distributed Nodes.**
 
@@ -111,10 +112,13 @@ mode); do **not** pretend peer voting alone solves this.
 
 ## Release sequence
 
-**v0.3-A: specification + pure Core (this first increment).** Introduce
+**v0.3-A: specification + pure Core (first increment completed).** Introduce
 platform-agnostic capabilities, eligibility, leader states and guarded
-transitions with deterministic tests. Disabled by default. No production
-ngrok process changes, credentials copied, or network endpoints opened.
+transitions with deterministic tests (`src/ingress/` and
+`test/ingress-manager.test.js`). Disabled by default and deliberately
+unwired. No production ngrok process changes, credentials copied, or network
+endpoints opened. The in-memory test coordinator is **not** a deployable
+distributed lease service.
 
 **v0.3-B: transport and safe takeover lab.** Probe ngrok's same-domain
 non-pooled collision/release semantics using an isolated test configuration,
