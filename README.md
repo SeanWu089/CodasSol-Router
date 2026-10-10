@@ -351,6 +351,32 @@ The menu app status item uses a monochrome macOS template icon derived from the 
 
 The installed macOS app is named **CodasSol-mac.app**, has a full-color avatar Finder icon derived from `sean.PNG`, and uses a 21-point monochrome template icon for the menu bar.
 
+### CodasSol-mac v0.3 device panel (preview)
+
+The native menu-bar icon opens a compact SwiftUI device panel: local Mac first,
+then any registered peer/Agent devices, with detail pages, rename and local
+DevSpace management controls. No Electron, full Xcode, or web runtime required.
+The status bar continues to use the **black-and-white Sean template**; the
+Finder app icon retains the existing **blue Sean icon**.
+
+`scripts/mac/menu-app/DeviceDirectoryClient.swift` reads the authenticated
+Device Registry v1 API (`/_codassol/devices`) from **loopback only**, taking
+the local admin bearer from the private `~/.codassol/router.json` state file.
+It never forwards this token to remote devices. Until Registry v1 is deployed,
+the UI falls back to the **actual local Router agent registrations** in the
+same private file, marking their state **Unknown** (legacy registrations have
+no reliable recent heartbeat data) and disabling remote rename. The local
+Router and DevSpace statuses are still probed live. With Registry v1 installed,
+local-first status and authenticated rename become available without replacing
+the menu UI. No production Router restart or protocol migration is required
+to install the UI preview.
+
+`npm run test:mac` now exercises a mock authenticated Registry Router, device
+listing and rename, legacy 404, wrong credentials, and saved legacy records,
+in addition to existing macOS LaunchAgent and migration regression checks.
+The real Mac/Windows multi-node Registry deployment and login-reboot test
+remain separate, potentially disruptive integration stages.
+
 ### CodasSol-mac v0.2 (pre-migration)
 
 Build the isolated preview with `zsh scripts/mac/menu-app/build.sh /tmp/CodasSol-mac-preview.app`, then run `npm run test:mac` on macOS. The tests include a mock LaunchAgent start/stop cycle under a path containing spaces, using an isolated job label (never the production service). The `.app` bundles its own icons and the `devspace-runner.zsh` helper; it does not require the original `sean.PNG` on the Desktop.

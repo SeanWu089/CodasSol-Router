@@ -4,7 +4,7 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 DEST="${1:-$HOME/Applications/CodasSol-mac.app}"
 mkdir -p "$DEST/Contents/MacOS"
 mkdir -p "$DEST/Contents/Resources"
-swiftc "$ROOT/main.swift" "$ROOT/DevSpaceManager.swift" -O -o "$DEST/Contents/MacOS/CodasSolMac"
+swiftc "$ROOT/main.swift" "$ROOT/DevSpaceManager.swift" "$ROOT/DeviceDirectoryClient.swift" "$ROOT/DevicePanelView.swift" -O -o "$DEST/Contents/MacOS/CodasSolMac"
 cp "$ROOT/SeanTemplate.png" "$DEST/Contents/Resources/SeanTemplate.png"
 cp "$ROOT/devspace-runner.zsh" "$DEST/Contents/Resources/devspace-runner.zsh"
 cp "$ROOT/migrate-devspace.py" "$DEST/Contents/Resources/migrate-devspace.py"
@@ -18,8 +18,8 @@ cat > "$DEST/Contents/Info.plist" <<'PLIST'
 <key>CFBundleIdentifier</key><string>com.codassol.mac</string>
 <key>CFBundleName</key><string>CodasSol-mac</string>
 <key>CFBundleDisplayName</key><string>CodasSol-mac</string>
-<key>CFBundleShortVersionString</key><string>0.2.1</string>
-<key>CFBundleVersion</key><string>3</string>
+<key>CFBundleShortVersionString</key><string>0.3.0</string>
+<key>CFBundleVersion</key><string>4</string>
 <key>CFBundleIconFile</key><string>CodasSol</string>
 <key>CFBundleExecutable</key><string>CodasSolMac</string>
 <key>CFBundlePackageType</key><string>APPL</string>
