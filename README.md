@@ -23,6 +23,15 @@
 > authorization are still under development. See the
 > [Dynamic Ingress v0.3 design](docs/superpowers/specs/2026-10-10-dynamic-ingress-v0.3-design.md).
 
+**Ingress fault diagnosis (read-only):** run
+`npm run ingress:diagnose -- --public-url https://YOUR-RESERVED-DOMAIN
+--agent-log /path/to/ngrok-agent.log` on the current ingress host. This
+checks local and public Router readiness, the unauthenticated MCP boundary
+and ngrok Agent tunnel registration. The optional log report aggregates
+session reconnects, DNS failures, connection resets and heartbeat timeouts
+without displaying tokens or raw network addresses. This diagnostic tool
+does **not** establish automatic failover or authenticated MCP execution.
+
 > **Current codebase (2026-10-10):** The default branch includes the tested
 > **Device Registry v1**, **CodasSol-mac v0.3.2** menu-bar app, and Mac-side
 > workspace routing / wrong-device protections. These components were

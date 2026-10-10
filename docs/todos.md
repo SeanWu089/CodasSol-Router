@@ -2,6 +2,12 @@
 
 ## Core v0.3: Dynamic Ingress (highest architecture priority)
 
+- [x] Add a read-only diagnostic CLI separating local Router, public Router,
+  ngrok endpoint registration and unauthenticated MCP 401; summarize ngrok
+  reconnect/heartbeat/DNS/connection resets without printing secrets.
+- [x] Add a guarded ngrok lifecycle adapter with external-fencing and exact
+  owned-process-handle contracts; simulated handover and fail-closed tests
+  pass. No live Agent launcher or production lease provider wired yet.
 - [x] Define **Single Endpoint · Dynamic Ingress · Distributed Nodes** contract,
   mobile eligibility limits, ownership fencing, independent public MCP auth,
   fail-closed behavior and acceptance checks; see
@@ -13,6 +19,9 @@
 - [ ] Implement an authoritative external claim provider and an endpoint
   adapter with real provider-enforced fencing before permitting activation.
   Current Core interfaces deliberately reject unfenced adapters.
+- [ ] Investigate Mac's repeated ngrok Agent heartbeat timeouts, DNS errors
+  and TCP resets; do not terminate the existing working tunnel as part of
+  diagnostics. ChatGPT UI session loss is a separate, unverified cause.
 - [ ] Verify real ngrok same-domain non-pooled exclusivity, ownership and
   orphaned-agent release under two hosts; do **not** reconfigure production
   ingress before those experiments.

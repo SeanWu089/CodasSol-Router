@@ -126,6 +126,16 @@ then add a guarded Mac + Windows IngressAdapter with private credentials,
 idempotent lifecycle, persisted epochs, explicit fencing and crash recovery.
 Retain the known-good Mac tunnel until a reversible cutover is proven.
 
+The first v0.3-B **interface-only** increment provides
+`src/ingress/ngrok-agent-adapter.js` and mock-backed tests. This adapter
+requires a truly external fencing authority and fencing-aware Agent
+launcher, neither of which is available for production yet. Flags on a
+test double are not proof ngrok enforces a lease. It never enumerates or
+stops unrelated ngrok processes. Read-only ingress fault triage is available
+as `npm run ingress:diagnose -- --public-url https://YOUR-DOMAIN
+--agent-log /path/to/ngrok-agent.log`. HTTP 401 without a bearer is an
+expected authorization boundary, not MCP OAuth continuity proof.
+
 **v0.3-C: stable MCP client auth.** Client auth independent of local DevSpace
 OAuth, provision and rotate secrets securely, preserve/recover workspace
 affinity, test actual ChatGPT connector authorization both before and after
