@@ -11,7 +11,7 @@ const ID = /^[A-Za-z0-9:_-]{12,128}$/;
 const ACTIONS = new Set(["acquire", "verify", "renew", "release", "publish", "confirm", "status"]);
 
 export function emptyWitnessState() {
-  return { version: 1, epoch: 0, lease: null, latest: null };
+  return { version: 1, epoch: 0, lease: null, latest: null, domain: null };
 }
 
 function invalid(message) {
@@ -48,6 +48,11 @@ export function applyWitnessAction({
   }
   if (action === "acquire") {
     if (payload.ownerId !== actor) throw invalid("Wrong installation");
+    if (typeof payload.domain !== "string" ||
+        !/^https:\/\/[a-z0-9.-]+(?::443)?$/.test(payload.domain) ||
+        (state.domain !== null && state.domain !== payload.domain)) {
+      throw invalid("Witness domain is not the pinned public origin");
+    }
     if (state.lease?.expiresAt > now) return unchanged(null);
     if (!Number.isSafeInteger(state.epoch + 1) ||
         typeof newToken !== "string" || newToken.length < 32 ||
@@ -55,7 +60,7 @@ export function applyWitnessAction({
     const epoch = state.epoch + 1;
     const expiresAt = now + ttlMs;
     return {
-      state: { ...state, epoch, lease: {
+      state: { ...state, domain: payload.domain, epoch, lease: {
         ownerId: actor, epoch, expiresAt, tokenHash: newTokenHash
       } },
       result: { ownerId: actor, epoch, expiresAt, fencingToken: newToken },
