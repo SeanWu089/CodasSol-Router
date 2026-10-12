@@ -2,6 +2,10 @@
 
 ## Mac fixed-domain ngrok lifecycle recovery (2026-10-12)
 
+- [x] Add and install short, case-sensitive Mac command `Codas!` for
+  safe managed-service startup and `Codas! status` for inspection;
+  preserve launchd ownership and never kill running services.
+
 - [x] Inspect live Mac process ownership and legacy start script. Confirm
   separate, healthy DevSpace and Router LaunchAgents; identify manual
   `ngrok http 7676` tunnel as cause of missing public Router health.

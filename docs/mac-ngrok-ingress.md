@@ -54,6 +54,16 @@ authorization is **expected**, not a failed health check.
 
 ## Day-to-day
 
+On the Mac, type **`Codas!`** in Terminal. This is a literal,
+case-sensitive executable installed in `~/.local/bin`. Without arguments
+it checks DevSpace/Router health, starts only an already-registered and
+stopped LaunchAgent if its port is free, then checks/starts the managed
+ngrok ingress. Running it repeatedly is safe and does not replace a
+working process. To only inspect, use `Codas! status`.
+
+To reinstall the shortcut from a checkout:
+`zsh scripts/mac/install-codas-command.zsh`.
+
 Use `zsh ~/.local/share/codassol-router/bin/manage-ngrok-ingress.sh status`.
 The legacy `start-devspace-ngrok`/ `start-ngrok-devspace` aliases
 are compatibility wrappers around **managed ngrok**; they no longer

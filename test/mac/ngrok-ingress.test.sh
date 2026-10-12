@@ -6,7 +6,9 @@ for file in \
   "$ROOT/scripts/mac/ngrok-ingress-runner.zsh" \
   "$ROOT/scripts/mac/manage-ngrok-ingress.sh" \
   "$ROOT/scripts/mac/switch-ngrok-ingress.zsh" \
-  "$ROOT/scripts/mac/start-devspace-ngrok-compat.zsh"; do
+  "$ROOT/scripts/mac/start-devspace-ngrok-compat.zsh" \
+  "$ROOT/scripts/mac/codas-command.zsh" \
+  "$ROOT/scripts/mac/install-codas-command.zsh"; do
   /bin/zsh -n "$file"
 done
 
