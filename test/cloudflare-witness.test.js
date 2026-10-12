@@ -5,6 +5,7 @@ import {
   applyWitnessAction, emptyWitnessState
 } from "../src/ingress/cloudflare-witness-core.js";
 import { CloudflareWitnessAuthority } from "../src/ingress/cloudflare-witness-authority.js";
+import { createWitnessCommitPublisher } from "../src/ingress/witness-commit-publisher.js";
 
 const mac = "mac-installation-12345";
 const windows = "windows-installation-12345";
@@ -151,4 +152,43 @@ test("HTTP client works with an independent witness and fails closed on outage",
   outage = true;
   await assert.rejects(client.status(), /offline/);
   assert.equal(requests.length, 7);
+});
+
+test("witness publisher accepts ONLY durable post-commit coordinates under live fencing", async () => {
+  const observed = [];
+  const claim = {
+    ownerId: windows, epoch: 5, fencingToken: "test-only-fencing-token"
+  };
+  let active = true;
+  const witness = {
+    verify: async (value) => active && value === claim,
+    publishCommitted: async ({ claim: received, checkpoint }) => {
+      assert.equal(received, claim);
+      observed.push({ ...checkpoint });
+      return true;
+    },
+    confirmLatestCommitted: async ({ claim: received, installationId, checkpoint }) =>
+      received === claim && installationId === windows &&
+        checkpoint.digest === digestA
+  };
+  const publish = createWitnessCommitPublisher({
+    witness, getClaim: async () => claim, installationId: windows
+  });
+  assert.equal(await publish({
+    epoch: 5, revision: 1, digest: digestA, previous: null
+  }), true);
+  assert.deepEqual(observed, [{ revision: 1, digest: digestA, previous: null }]);
+  assert.equal(await publish({
+    epoch: 4, revision: 2, digest: digestB, previous: digestA
+  }), false);
+  assert.equal(observed.length, 1);
+  active = false;
+  assert.equal(await publish({
+    epoch: 5, revision: 2, digest: digestB, previous: digestA
+  }), false);
+  assert.equal(observed.length, 1);
+  assert.throws(() => createWitnessCommitPublisher({
+    witness: { publishCommitted: async () => true },
+    getClaim: async () => claim, installationId: windows
+  }), /External witness/);
 });
