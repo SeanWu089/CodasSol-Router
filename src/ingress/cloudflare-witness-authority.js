@@ -5,12 +5,15 @@
  */
 export class CloudflareWitnessAuthority {
   constructor({
-    endpoint, installationId, secret, fetchImpl = fetch,
+    endpoint, publicDomain, installationId, secret, fetchImpl = fetch,
     timeoutMs = 5_000
   } = {}) {
     const url = new URL(endpoint);
+    const domain = new URL(publicDomain);
     if (url.protocol !== "https:" || url.pathname !== "/" ||
         url.search || url.hash || url.username || url.password ||
+        domain.protocol !== "https:" || domain.pathname !== "/" ||
+        domain.search || domain.hash || domain.username || domain.password ||
         !/^[A-Za-z0-9:_-]{12,128}$/.test(installationId ?? "") ||
         !/^[a-f0-9]{64}$/i.test(secret ?? "") ||
         typeof fetchImpl !== "function" ||
@@ -19,6 +22,7 @@ export class CloudflareWitnessAuthority {
       throw new TypeError("Pinned HTTPS witness, device ID and 256-bit secret required");
     }
     this.endpoint = url.origin;
+    this.publicDomain = domain.origin;
     this.installationId = installationId;
     this.secret = secret;
     this.fetchImpl = fetchImpl;
@@ -55,9 +59,11 @@ export class CloudflareWitnessAuthority {
     return result.result;
   }
 
-  acquire({ ownerId }) {
-    if (ownerId !== this.installationId) throw new Error("Wrong witness owner");
-    return this.#request("acquire", { ownerId });
+  acquire({ ownerId, domain }) {
+    if (ownerId !== this.installationId || domain !== this.publicDomain) {
+      throw new Error("Witness owner or public domain mismatch");
+    }
+    return this.#request("acquire", { ownerId, domain });
   }
 
   verify(claim) { return this.#request("verify", { claim }); }
