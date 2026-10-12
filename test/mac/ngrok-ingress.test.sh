@@ -10,6 +10,13 @@ for file in \
   /bin/zsh -n "$file"
 done
 
+# Production internet/VPN paths may take >4s to return an OAuth 401.
+# The migration guard must allow more than a 4-second public MCP roundtrip.
+if ! /usr/bin/grep -q -- '--max-time 15.*MCP\|--max-time 15.*-X POST' "$ROOT/scripts/mac/switch-ngrok-ingress.zsh"; then
+  print -u2 -- "FAIL: migration guard public MCP probe timeout is too short"
+  exit 1
+fi
+
 # No accidental global process cleanup or bypass of CodasSol Router.
 if /usr/bin/grep -Eq '(^|[[:space:]])(pkill|killall)[[:space:]]|exec .*ngrok http "?7676' \
   "$ROOT/scripts/mac/ngrok-ingress-runner.zsh" \

@@ -36,7 +36,7 @@ except (ValueError,KeyError): sys.exit(1)
 }
 
 function live_health() {
-  /usr/bin/curl -fsS --max-time 6 "$url/_codassol/health" |
+  /usr/bin/curl -fsS --max-time 12 "$url/_codassol/health" |
     /usr/bin/python3 -c 'import json,sys; x=json.load(sys.stdin); sys.exit(0 if x.get("ok") is True and x.get("backendReachable") is True else 1)'
 }
 
@@ -103,7 +103,7 @@ for _ in {1..90}; do
   if tunnel_matches 17676 && live_health; then
     # Require the public MCP path to enforce authorization, not to return
     # a DevSpace HTML 404. Do not send any bearer credentials in this probe.
-    code="$(/usr/bin/curl -sS --max-time 4 -o /dev/null -w '%{http_code}' -X POST -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' "$url/mcp" || true)"
+    code="$(/usr/bin/curl -sS --max-time 15 -o /dev/null -w '%{http_code}' -X POST -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' "$url/mcp" || true)"
     if [[ "$code" == "401" ]]; then
       success=true
       print -- "SUCCESS: fixed domain -> Router 17676 -> DevSpace 7676; public MCP HTTP 401 (expected)."

@@ -9,13 +9,13 @@
   idempotent staging/status manager and detached migration with PID/domain
   verification plus automatic rollback. Runner refuses unhealthy Router
   and never restarts DevSpace.
-- [ ] Activate managed ngrok `17676` for the fixed public domain after
+- [x] Activate managed ngrok `17676` for the fixed public domain after
   testing; verify public health and unauthenticated /mcp HTTP 401, preserve
   DevSpace/Router PIDs and ensure launchd manages reconnect/restart.
-- [ ] Replace obsolete `start-devspace-ngrok` user entry with compatibility
+- [x] Replace obsolete `start-devspace-ngrok` user entry with compatibility
   wrapper, preserving a dated backup of the original; optionally replace
   stale Desktop script if safely writable (iCloud may mark it dataless).
-- [ ] Verify full Node/macOS test suite, commit in isolated worktree, and
+- [x] Verify full Node/macOS test suite, commit in isolated worktree, and
   check the live public tunnel after the migration.
 
 ## v0.3: public OAuth continuity (in progress, 2026-10-12)

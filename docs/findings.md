@@ -12,6 +12,18 @@
   Use independent LaunchAgents and a fixed `ngrok http 17676` entry,
   never route public MCP directly to DevSpace in CodasSol mode.
 
+- 2026-10-12 — In the ngrok migration trial, dedicated
+  `com.codassol.ngrok.ingress` successfully forwarded the fixed domain
+  to Router 17676 while DevSpace (PID 12294) and Router (PID 51057)
+  stayed unchanged. Public Router health returned 200; unauthenticated
+  MCP returned the expected 401. The original migration guard's
+  4-second MCP deadline was too short for this Mac's intermittent
+  ~5.1-second public authorization response. Two rounds with 15s
+  deadlines verified both paths, and ONLY the obsolete detached
+  migration guard PID was ended; the working ngrok LaunchAgent was
+  deliberately preserved. Future migrations now use a 15s public MCP
+  deadline and 12s health deadline.
+
 - 2026-10-10 (~17:08 local) — The installed `ngrok diagnose --region jp` returned generic Internet Connectivity WARN: Google-over-HTTPS DNS resolver timeout (`ERR_NGROK_8000`) and Google TCP targets timeout (`ERR_NGROK_8001/8002`). This confirms those external test targets are not consistently reachable, **not** that ngrok's own edge is down; Google service reachability can be independently restricted. Targeted DNS lookup successfully resolved A and AAAA for `connect.ngrok-agent.com` and the reserved endpoint; IPv4 and IPv6 requests to the reserved hostname reached the HTTPS front end (an HTTP 404 for unrelated root path is expected and not a failed MCP test). Curl to the Agent control hostname connected TCP but rejected ordinary browser-style TLS handshake; it does not exercise the ngrok Agent's proprietary protocol, so neither IPv4 nor IPv6 can be blamed in isolation. Keep the known-good endpoint running; next investigate DNS/proxy/transport changes and ngrok reconnection policy using a separate maintenance window or isolated environment.
 
 - 2026-10-10 (~16:54 local) — Investigated repeated session interruptions without stopping the live ngrok Agent. Mac Router 17676 and DevSpace 7676 were healthy; ngrok 3.39.11 was running as PID 38020 since ~10:41 and served the fixed hostname. Public health returned JSON HTTP 200; unauthorized MCP correctly returned HTTP 401. Persistent Agent log `~/.local/share/codassol-router-upgrades/ngrok-ingress-agent.log` includes repeated `heartbeat timeout`, reconnect loops, DNS lookup timeouts and TCP resets, including around 16:52. The first live 60-minute diagnostic found 7 heartbeat timeouts, 5 reconnect events, 1 DNS failure, 2 resets and 7 session establishments. This supports intermittent Mac ngrok transport instability, but does not prove the separate ChatGPT conversation UI disconnect was caused by ngrok. Core v0.3 now includes a read-only ingress diagnostic CLI and a simulated, disabled-by-default ngrok lifecycle adapter. No production tunnel, Router or DevSpace process was stopped.
