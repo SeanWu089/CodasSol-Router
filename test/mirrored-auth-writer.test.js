@@ -34,13 +34,14 @@ async function fixture(testFn) {
       agentHub = { enqueue: (_id, task) => task.type === "auth-replica-commit"
         ? receiver.commit(task.certificate)
         : receiver.receive(task.checkpoint) },
-      verifyFence = async () => true
+      verifyFence = async () => true,
+      commitPublisher = null, requireExternalCommit = false
     } = {}) => new MirroredAuthWriter({
       localAuthority: new LocalRefreshAuthority({ filePath: sourceFile }),
       agentHub, standbyDeviceId: "windows",
       issuer, source: mac, target: windows,
       signingKey: signer.privateKey, recipientKey: recipient.publicKey,
-      epoch: 4, verifyFence
+      epoch: 4, verifyFence, commitPublisher, requireExternalCommit
     });
     await testFn({ sourceFile, standbyFile, createWriter, receiver });
   } finally {
@@ -264,5 +265,72 @@ test("lost COMMIT receipt is fail-closed even if standby already committed", asy
       subject: "owner", clientId: "chatgpt-client",
       resource: issuer + "/mcp"
     }), { code: "AUTH_STATE_UNAVAILABLE" });
+  });
+});
+
+test("external witness publication follows standby COMMIT and precedes successful OAuth return", async () => {
+  await fixture(async ({ sourceFile, standbyFile, createWriter }) => {
+    const observed = [];
+    const writer = createWriter({
+      requireExternalCommit: true,
+      commitPublisher: async (revision) => {
+        const leader = JSON.parse(await readFile(sourceFile, "utf8"));
+        const standby = JSON.parse(await readFile(standbyFile, "utf8"));
+        assert.equal(standby.pending, null);
+        assert.equal(standby.checkpoint.revision, revision.revision);
+        assert.equal(leader.authRevision, revision.revision);
+        assert.equal(leader.authCommitAckRevision, undefined);
+        assert.equal(revision.digest, standby.checkpoint.digest);
+        assert.equal(revision.previous, null);
+        observed.push(revision.revision);
+        return true;
+      }
+    });
+    const grant = new RefreshTokenRotation({
+      authority: writer.namespace("refreshGrants")
+    });
+    const issued = await grant.issue({
+      subject: "owner", clientId: "chatgpt-client", resource: issuer + "/mcp"
+    });
+    assert.equal(issued.refresh_token.length, 64);
+    assert.deepEqual(observed, [1]);
+    assert.equal(JSON.parse(await readFile(sourceFile, "utf8"))
+      .authCommitAckRevision, 1);
+  });
+});
+
+test("external witness outage stops issuance after durable standby COMMIT without auto-retry", async () => {
+  await fixture(async ({ sourceFile, standbyFile, createWriter }) => {
+    let requests = 0;
+    const writer = createWriter({
+      requireExternalCommit: true,
+      commitPublisher: async () => { requests++; return false; }
+    });
+    const grants = new RefreshTokenRotation({
+      authority: writer.namespace("refreshGrants")
+    });
+    await assert.rejects(grants.issue({
+      subject: "owner", clientId: "chatgpt-client",
+      resource: issuer + "/mcp"
+    }), { code: "AUTH_STATE_UNAVAILABLE" });
+    assert.equal(requests, 1);
+    assert.equal(JSON.parse(await readFile(sourceFile, "utf8")).authRevision, 1);
+    assert.equal(JSON.parse(await readFile(sourceFile, "utf8"))
+      .authCommitAckRevision, undefined);
+    assert.equal(JSON.parse(await readFile(standbyFile, "utf8"))
+      .checkpoint.revision, 1);
+    await assert.rejects(grants.issue({
+      subject: "owner", clientId: "chatgpt-client",
+      resource: issuer + "/mcp"
+    }), { code: "AUTH_STATE_UNAVAILABLE" });
+    assert.equal(requests, 1, "uncertain publication must not be replayed");
+  });
+});
+
+test("requiring an external witness rejects missing publisher at construction", async () => {
+  await fixture(async ({ createWriter }) => {
+    assert.throws(() => createWriter({
+      requireExternalCommit: true, commitPublisher: null
+    }), /durable local state/);
   });
 });
