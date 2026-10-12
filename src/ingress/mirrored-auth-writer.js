@@ -34,7 +34,7 @@ export class MirroredAuthWriter {
     issuer, source, target, signingKey, recipientKey,
     epoch, verifyFence, clock = () => Date.now(),
     witness = null, currentClaim = null,
-    timeoutMs = 10_000
+    commitPublisher = null, timeoutMs = 10_000
   } = {}) {
     if (typeof localAuthority?.transact !== "function" ||
         typeof agentHub?.enqueue !== "function" ||
@@ -47,13 +47,17 @@ export class MirroredAuthWriter {
           typeof witness.publishCommitted !== "function" ||
           typeof witness.confirmLatestCommitted !== "function" ||
           typeof currentClaim !== "function")) ||
-        (witness === null && currentClaim !== null)) {
+        (witness === null && currentClaim !== null) ||
+        (commitPublisher !== null &&
+          typeof commitPublisher !== "function") ||
+        (witness !== null && commitPublisher !== null)) {
       throw new TypeError("Mirrored auth needs durable local state, pinned peer and fencing");
     }
     Object.assign(this, {
       localAuthority, agentHub, standbyDeviceId,
       issuer, source, target, signingKey, recipientKey,
-      epoch, verifyFence, clock, timeoutMs, witness, currentClaim
+      epoch, verifyFence, clock, timeoutMs, witness, currentClaim,
+      commitPublisher
     });
     // A caller cannot treat mirroring alone as distributed consensus.
     this.distributedSafe = false;
@@ -200,7 +204,7 @@ export class MirroredAuthWriter {
       if (this.commitPublisher) {
         const published = await this.commitPublisher({
           epoch: this.epoch, revision: prepared.revision,
-          digest: prepared.digest, previous: prepared.previous
+          digest: prepared.digest, previous: prepared.previousDigest
         });
         if (published !== true) {
           throw unavailable("External latest-commit publication was refused");
