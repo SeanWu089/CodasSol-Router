@@ -1,0 +1,24 @@
+name: Cloudflare witness v0.3 checks
+
+on:
+  push:
+    branches:
+      - feat/cloudflare-witness-v0.3
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  witness-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Verify independent witness state and Router HTTP client
+        run: node --test test/cloudflare-witness.test.js
+      - name: Verify full Linux Node suite
+        run: node --test
