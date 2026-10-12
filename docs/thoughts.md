@@ -2,6 +2,28 @@
 
 ## v0.3 transport decision — lightweight Single Ingress (2026-10-10)
 
+### Opt-in dynamic OAuth client registration (2026-10-12)
+
+- Added constrained RFC7591 public client registration at `POST /register`
+  when an OAuth issuer, owner consent service AND dynamic-client registry
+  are explicitly injected. Accepts public `token_endpoint_auth_method=none`,
+  authorization-code+PKCE and optional refresh grants; accepts only exact
+  HTTPS or loopback-HTTP redirect URIs, rejects credentials/fragments,
+  conflicting metadata and unsafe callbacks. Registration yields a random
+  secretless `client_id`. A single-machine atomic file registry survives
+  local restarts, caps at 512 clients and has a persisted rate limit.
+- The authorization-code and token HTTP handlers re-read the registered
+  client list from the configured authority before accepting new grants.
+  OAuth discovery advertises `registration_endpoint` only when DCR is
+  enabled. No arbitrary remote Client ID Metadata URLs are fetched, so this
+  design intentionally avoids the related SSRF surface. Complete loopback
+  test: dynamic registration → consent → PKCE → bearer and refresh issued.
+- **Still not physical cross-host-ready:** dynamic client registry currently
+  uses a local file, not an independently fenced shared authority; it needs
+  the same replication/fencing work as refresh grants and revocations.
+  The production Router has not been migrated, and no physical ChatGPT
+  DCR browser roundtrip has been performed.
+
 ### Public MCP authorization split — experimental Mac implementation (2026-10-12)
 
 - **Verified architecture, not an OAuth login rollout:** split the public

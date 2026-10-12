@@ -50,6 +50,7 @@ export async function handlePublicOAuthTokenRequest(req, res, oauth) {
   }
   const grantType = params.get("grant_type");
   try {
+    await oauth.refreshRegisteredClients();
     let result;
     if (grantType === "authorization_code") {
       result = await oauth.redeemCodeWithRefresh({

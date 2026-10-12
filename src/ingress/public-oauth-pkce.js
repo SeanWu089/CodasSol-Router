@@ -40,7 +40,8 @@ export class PublicOAuthPkceGrants {
   constructor({
     issuer, keyId, privateKey, registeredClients,
     clock = () => Date.now(), codeTtlMs = 90_000,
-    accessTtlSeconds = 600, refreshRotation = null
+    accessTtlSeconds = 600, refreshRotation = null,
+    dynamicClientRegistry = null
   } = {}) {
     this.issuer = normalizedIssuer(issuer);
     if (typeof keyId !== "string" || !/^[a-zA-Z0-9:_-]{8,160}$/.test(keyId) ||
@@ -68,6 +69,8 @@ export class PublicOAuthPkceGrants {
     this.#clients = new Map([...registeredClients].map(
       ([id, uris]) => [id, [...uris]]
     ));
+    this.dynamicClientRegistry = dynamicClientRegistry;
+    this.staticClients = new Map(this.#clients);
     this.clock = clock;
     this.codeTtlMs = codeTtlMs;
     this.accessTtlSeconds = accessTtlSeconds;
@@ -82,6 +85,26 @@ export class PublicOAuthPkceGrants {
   #checkClient(clientId, redirectUri) {
     if (typeof clientId !== "string" ||
         !this.#clients.get(clientId)?.includes(redirectUri)) throw deny();
+  }
+
+  async refreshRegisteredClients() {
+    if (!this.dynamicClientRegistry) return;
+    // Never assume a previously known dynamic client is still authorized
+    // if the backing registry becomes unreachable or changes.
+    const clients = await this.dynamicClientRegistry.snapshot();
+    const trusted = new Map(this.staticClients);
+    for (const item of clients) {
+      if (trusted.has(item.clientId)) throw new Error("OAuth client ID collision");
+      trusted.set(item.clientId, item.redirectUris);
+    }
+    this.#clients = trusted;
+  }
+
+  async registerDynamicClient(metadata) {
+    if (!this.dynamicClientRegistry) throw new Error("DCR not enabled");
+    const client = await this.dynamicClientRegistry.register(metadata);
+    await this.refreshRegisteredClients();
+    return client;
   }
 
   validateAuthorizationRequest({

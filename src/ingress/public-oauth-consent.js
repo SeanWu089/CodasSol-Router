@@ -99,6 +99,7 @@ export async function handlePublicOAuthConsent(req, res, {
       sendJson(res, 405, { error: "invalid_method" });
       return true;
     }
+    await oauth.refreshRegisteredClients();
     const approved = parseAuthorization(params, oauth);
     if (req.method === "GET") {
       const hidden = FIELDS.map((field) =>
@@ -147,8 +148,15 @@ ${hidden}
     res.writeHead(303, { location: callback.href, "cache-control": "no-store" });
     res.end();
     return true;
-  } catch {
-    sendJson(res, 400, { error: "invalid_authorization_request" });
+  } catch (error) {
+    const isGrantError = error?.code === "invalid_grant" ||
+      error?.message === "Invalid OAuth authorization request" ||
+      error?.message === "Missing or unsafe OAuth state" ||
+      error?.message === "Authorization request too large" ||
+      error?.message === "Ambiguous approval fields";
+    sendJson(res, isGrantError ? 400 : 503, {
+      error: isGrantError ? "invalid_authorization_request" : "temporarily_unavailable"
+    });
     return true;
   }
 }
@@ -169,6 +177,8 @@ export function authorizationServerMetadata(oauth) {
     grant_types_supported: ["authorization_code", "refresh_token"],
     token_endpoint_auth_methods_supported: ["none"],
     code_challenge_methods_supported: ["S256"],
-    scopes_supported: ["mcp:invoke"]
+    scopes_supported: ["mcp:invoke"],
+    ...(oauth.dynamicClientRegistry
+      ? { registration_endpoint: origin + "/register" } : {})
   };
 }

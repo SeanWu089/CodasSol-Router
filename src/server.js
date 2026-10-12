@@ -593,6 +593,34 @@ export function createRouterServer(config = loadConfig(), runtime = null) {
       return;
     }
     if (runtime?.publicAuth) {
+      if (req.url === "/register" &&
+          runtime.publicOauth?.dynamicClientRegistry &&
+          runtime.publicOauthApproval) {
+        if (req.method !== "POST" ||
+            !req.headers["content-type"]?.startsWith("application/json")) {
+          sendJson(res, 405, { error: "invalid_request" });
+          return;
+        }
+        try {
+          const data = await readJsonBody(req, { maxBytes: 8192 });
+          const registered = await runtime.publicOauth.registerDynamicClient(data);
+          res.writeHead(201, {
+            "content-type": "application/json; charset=utf-8",
+            "cache-control": "no-store"
+          });
+          res.end(JSON.stringify(registered));
+        } catch (error) {
+          const limited = error?.code === "client_registration_limited";
+          const invalid = error?.code === "invalid_client_metadata" ||
+            error?.code === "BODY_TOO_LARGE" ||
+            error instanceof SyntaxError;
+          sendJson(res, limited ? 429 : invalid ? 400 : 503, {
+            error: limited ? "temporarily_unavailable" :
+              invalid ? "invalid_client_metadata" : "temporarily_unavailable"
+          });
+        }
+        return;
+      }
       if (req.url === "/.well-known/oauth-authorization-server" &&
           runtime.publicOauth && runtime.publicOauthApproval) {
         if (req.method !== "GET") {

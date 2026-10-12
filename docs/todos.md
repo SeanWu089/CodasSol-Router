@@ -14,15 +14,18 @@
   only; parallel two-Router test uses shared test authority/local filename.
 - [x] Advertise RFC8414 authorization-server metadata only when
   pre-registered client issuer AND owner approval flow are configured;
-  do not advertise DCR or client metadata support yet.
+  advertise DCR only when a separately provided dynamic registry exists.
 - [ ] Build a real provider-fenced SERIALIZABLE refresh/grant authority
   shared by physically independent Mac and Windows nodes. Ensure token
   family revocation, JWT JTI revocation and grant state remain fresh and
   rollback-resistant after unexpected power loss and leader handoff.
-- [ ] Implement compatible ChatGPT client registration using either
-  verified Client ID Metadata Documents (with SSRF defenses) or durable
-  RFC7591 Dynamic Client Registration with exact redirect allowlists;
-  retain a secure preregistration option.
+- [x] Implement a constrained RFC7591 public-client DCR subset with HTTPS
+  (or loopback HTTP) callback allowlists, persisted local registry,
+  bounded anonymous registration and per-request client refresh.
+  Verify dynamic registration → consent → code exchange on loopback.
+- [ ] Replace the single-host dynamic-client registry with a provider-fenced
+  shared authority that remains consistent across real Mac/Windows failover.
+  Optionally add Client ID Metadata Document support with SSRF controls.
 - [ ] Add a provisioned, user-ready startup and owner approval UX;
   assess live revocation synchronization (the static 5-minute snapshot
   currently blocks durable production authentication).
