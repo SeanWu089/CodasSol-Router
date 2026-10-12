@@ -28,6 +28,9 @@ export function loadConfig(env = process.env) {
     localRoots: splitRoots(env.CODASSOL_LOCAL_ROOTS),
     peersFile: env.CODASSOL_PEERS_FILE || null,
     allowInsecurePeers: env.CODASSOL_ALLOW_INSECURE_PEERS === "1",
-    peerProbeIntervalMs: Number.parseInt(env.CODASSOL_PEER_PROBE_INTERVAL_MS || "10000", 10)
+    peerProbeIntervalMs: Number.parseInt(env.CODASSOL_PEER_PROBE_INTERVAL_MS || "10000", 10),
+    // Experimental; disabled unless an externally provisioned public
+    // verifier and current revocation snapshot are explicitly provided.
+    publicAuthFile: env.CODASSOL_PUBLIC_AUTH_FILE || null
   };
 }

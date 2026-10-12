@@ -107,6 +107,18 @@ function writeBufferedResponse(res, response) {
   res.end(response.body);
 }
 
+function rejectPublicMcpAuth(res, runtime) {
+  const details = { error: "invalid_token" };
+  const body = JSON.stringify(details);
+  res.writeHead(401, {
+    "content-type": "application/json; charset=utf-8",
+    "content-length": Buffer.byteLength(body),
+    "cache-control": "no-store",
+    ...runtime.publicAuth.unauthorizedHeaders()
+  });
+  res.end(body);
+}
+
 async function routeMcpRequest(req, res, config, runtime) {
   if (!runtime || req.method !== "POST" || req.url !== "/mcp") return false;
   const body = await readBody(req);
@@ -114,13 +126,19 @@ async function routeMcpRequest(req, res, config, runtime) {
   try {
     payload = JSON.parse(body.toString("utf8"));
   } catch {
+    if (runtime.publicAuth) {
+      // Never fall through to the legacy raw proxy with a public OAuth
+      // bearer: that would leak this credential to local DevSpace.
+      sendJson(res, 400, { error: "invalid_mcp_json" });
+      return true;
+    }
     return false;
   }
 
   const deviceToolCall = !Array.isArray(payload) && payload?.method === "tools/call" &&
     payload.params?.name === "codassol_list_devices";
   if (deviceToolCall) {
-    if (!await validateOuterAuthorization(config, req)) {
+    if (!runtime.publicAuth && !await validateOuterAuthorization(config, req)) {
       sendJson(res, 401, { error: "unauthorized" });
       return true;
     }
@@ -139,9 +157,23 @@ async function routeMcpRequest(req, res, config, runtime) {
   const forwardedBody = routedPayload === payload ? body : Buffer.from(JSON.stringify(routedPayload));
   let response;
   if (decision.deviceId === runtime.localDeviceId) {
-    response = await bufferedRequest(config, req, forwardedBody);
+    if (runtime.publicAuth) {
+      const local = await runtime.peerOAuth.authorizedFetch("/mcp", {
+        method: req.method,
+        headers: peerForwardedHeaders(req.headers),
+        body: forwardedBody
+      });
+      response = {
+        statusCode: local.status,
+        headers: filteredHeaders(Object.fromEntries(local.headers.entries())),
+        body: Buffer.from(await local.arrayBuffer())
+      };
+    } else {
+      response = await bufferedRequest(config, req, forwardedBody);
+    }
   } else {
-    const authorized = await validateOuterAuthorization(config, req);
+    const authorized = runtime.publicAuth ||
+      await validateOuterAuthorization(config, req);
     if (!authorized) {
       sendJson(res, 401, { error: "unauthorized" });
       return true;
@@ -556,6 +588,50 @@ export function createRouterServer(config = loadConfig(), runtime = null) {
       }
       return;
     }
+    if (runtime?.publicAuth) {
+      if (req.url === "/.well-known/oauth-protected-resource" ||
+          req.url === "/.well-known/oauth-protected-resource/mcp") {
+        if (req.method !== "GET") {
+          sendJson(res, 405, { error: "method_not_allowed" });
+        } else {
+          sendJson(res, 200, runtime.publicAuth.metadata());
+        }
+        return;
+      }
+      if (req.url === "/mcp") {
+        // Always authenticate BEFORE parsing the request or looking up a
+        // device; never fall back to Mac DevSpace OAuth on verification fail.
+        try {
+          runtime.publicAuth.authenticate(bearerToken(req));
+        } catch {
+          rejectPublicMcpAuth(res, runtime);
+          return;
+        }
+        // MCP streamable HTTP also supports GET/DELETE. Stream/session routing
+        // across devices is not implemented yet; refuse rather than send an
+        // incoming public bearer to the local DevSpace as a fallback.
+        if (req.method !== "POST") {
+          sendJson(res, 405, { error: "public_mcp_method_not_yet_supported" });
+          return;
+        }
+      }
+      if (req.url?.startsWith("/mcp?") || req.url?.startsWith("/mcp/")) {
+        sendJson(res, 404, { error: "unsupported_public_mcp_path" });
+        return;
+      }
+      const pendingIssuerRoutes = new Set([
+        "/.well-known/oauth-authorization-server",
+        "/.well-known/openid-configuration",
+        "/authorize", "/register", "/token", "/revoke", "/jwks"
+      ]);
+      if (pendingIssuerRoutes.has(req.url)) {
+        // Public OAuth verification is ready, but public client login,
+        // refresh and key/discovery provisioning are NOT. Never misrepresent
+        // the legacy per-device DevSpace OAuth endpoints as this issuer.
+        sendJson(res, 503, { error: "public_oauth_issuer_not_deployed" });
+        return;
+      }
+    }
     try {
       if (await handlePeerRoute(req, res, config, runtime)) return;
     } catch (error) {
@@ -606,6 +682,15 @@ export function createRouterServer(config = loadConfig(), runtime = null) {
         "cache-control": "no-store"
       });
       res.end(payload);
+      return;
+    }
+
+    if (runtime?.publicAuth) {
+      // CodasSol's public OAuth token is scoped to THIS resource only.
+      // Never transparently proxy unmatched/public OAuth routes to DevSpace;
+      // doing so could expose its private auth/registration API or forward a
+      // credential meant for the CodasSol resource.
+      sendJson(res, 404, { error: "unknown_public_route" });
       return;
     }
 

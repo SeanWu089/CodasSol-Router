@@ -9,10 +9,12 @@ import { WorkspaceBindingStore } from "./workspace-bindings.js";
 import { PeerMesh } from "./peer-mesh.js";
 import { createRouterPeerOAuth } from "./router-peer-oauth.js";
 import { createIngressOwnerProof } from "./ingress/public-owner-proof.js";
+import { loadPublicMcpAccessFromFile } from "./ingress/public-mcp-access.js";
 
 export async function createRouterRuntime(config, {
   clock = () => Date.now(),
-  heartbeatTtlMs = 30_000
+  heartbeatTtlMs = 30_000,
+  publicAuth = null
 } = {}) {
   const stateDir = config.stateDir || defaultStateDir();
   const privateState = new RouterPrivateState({ stateDir });
@@ -70,6 +72,10 @@ export async function createRouterRuntime(config, {
     localDeviceId: config.localDeviceId || "local",
     peerOAuth: await createRouterPeerOAuth(config, stateDir)
   };
+  // A missing/invalid provisioning file fails startup, never silently falls
+  // back to DevSpace tokens when public auth mode was requested.
+  runtime.publicAuth = publicAuth || (config.publicAuthFile
+    ? await loadPublicMcpAccessFromFile(config.publicAuthFile) : null);
   runtime.peerMesh = await PeerMesh.load(runtime, config);
   for (const peer of runtime.peerMesh.peers.values()) {
     await catalog.observe({

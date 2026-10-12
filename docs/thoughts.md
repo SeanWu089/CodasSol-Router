@@ -2,6 +2,42 @@
 
 ## v0.3 transport decision — lightweight Single Ingress (2026-10-10)
 
+### Public MCP authorization split — experimental Mac implementation (2026-10-12)
+
+- **Verified architecture, not an OAuth login rollout:** split the public
+  CodasSol MCP resource token from each machine's **local DevSpace OAuth**
+  token. An opt-in `CODASSOL_PUBLIC_AUTH_FILE` loads a *pinned*, Ed25519
+  public-key verifier for access tokens bound to the stable HTTPS
+  `https://<fixed-domain>/mcp` audience. Exactly the same signed test
+  bearer was accepted by two independent Router instances (Mac/Windows
+  simulated on loopback); local MCP calls obtain a fresh node-local
+  DevSpace credential via `peerOAuth`, while remote jobs exclude the
+  incoming public bearer entirely. Existing Mac DevSpace tokens deliberately
+  fail in this opt-in mode; the legacy installed Router is unchanged.
+- **OAuth resource boundary:** protected resource metadata is served at
+  `/.well-known/oauth-protected-resource` and `.../mcp`; 401 includes a
+  stable `WWW-Authenticate: Bearer resource_metadata` reference.
+  Wrong audience, issuer, signature, scope, expiry, and revoked JWT IDs
+  fail closed. A stale revocation snapshot also fails closed (currently
+  5-minute freshness by default). Trust material is provisioned out of
+  band; the incoming JWT cannot nominate its own JWKS or signing key.
+  Unmatched public paths and invalid MCP JSON cannot fall through to the
+  legacy raw DevSpace proxy.
+- **Incomplete and intentionally disabled:** `/authorize`, `/token`,
+  `/register` and OAuth discovery server endpoints return 503 in this
+  experimental mode, because public **login, PKCE authorization codes,
+  refresh tokens, client provisioning and shared revocation authority** are
+  not yet implemented. MCP GET/DELETE stream/session affinity also remains
+  unimplemented and returns 405. These must be completed before enabling
+  this mode for ChatGPT. The first transition away from the existing Mac
+  DevSpace-issued token **may require one explicit reauthorization**;
+  only subsequent ingress switches should be seamless.
+- The provisional `src/ingress/client-access-tokens.js` and its tests are
+  unrelated pre-existing untracked proof-of-concept files; do not amend
+  or silently include them in this implementation's commit.
+- Reference: MCP authorization spec
+  https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/docs/specification/2025-11-25/basic/authorization.mdx
+
 ### Public owner identity preflight (2026-10-12)
 
 - HTTP 200 `/_codassol/health` is **not an ingress ownership proof**: the

@@ -1,5 +1,33 @@
 # Todos
 
+## v0.3: public OAuth continuity (in progress, 2026-10-12)
+
+- [x] Separate CodasSol public MCP bearer validation from local DevSpace
+  access tokens in opt-in Router mode. Verify stable issuer/audience/scope,
+  pinned Ed25519 public keys, expiry, fresh revocation snapshots, and
+  fail-closed JWT handling on both simulated Mac and Windows ingress.
+- [x] Handle 401 + protected-resource metadata at the stable public origin;
+  issue **no** public token or client authorization before a real OAuth
+  provider is implemented. Block unknown-path/invalid-MCP raw proxying to
+  DevSpace in the experimental mode.
+- [x] Prove the same public test token authorizes local MCP calls and remote
+  Agent jobs without ever passing the bearer token to another DevSpace.
+  The existing production Router has NOT been upgraded to this mode.
+- [ ] Implement a standards-compliant PUBLIC OAuth 2.1 authorization
+  server at the stable issuer: client registration/metadata, owner sign-in
+  and approval, authorization code + PKCE S256, token issuance, refresh
+  and safe revocation/key rollover. Preserve user consent semantics.
+- [ ] Make OAuth client registration, refresh-token state and revocations
+  durable and recoverable after a real Mac→Windows cutover; sync verified,
+  device-scoped credentials securely. A 5-minute-only static revocation
+  snapshot cannot support indefinite offline takeover.
+- [ ] Support authenticated Streamable HTTP GET/DELETE and session affinity
+  without returning remote sessions to the wrong DevSpace. Fail closed
+  until implemented.
+- [ ] Complete a real ChatGPT OAuth login, verify continuity across TWO
+  physical Router hosts and unchanged MCP URL, then plan an explicit
+  one-time transition from the legacy Mac DevSpace OAuth issuer.
+
 ## Core direction: Intelligent Routing (parallel to Dynamic Ingress)
 
 - [ ] Design a **ChatGPT-first, semantic project selection** flow: before
