@@ -2,6 +2,46 @@
 
 ## v0.3 transport decision — lightweight Single Ingress (2026-10-10)
 
+### Public owner identity preflight (2026-10-12)
+
+- HTTP 200 `/_codassol/health` is **not an ingress ownership proof**: the
+  fixed domain might still point to the previous Mac when Windows tries
+  to take over. Implemented an ephemeral per-Router HMAC challenge endpoint
+  `POST /_codassol/ingress/proof`. A candidate verifies an unpredictable
+  fresh challenge *through the configured public HTTPS domain* against its
+  private, in-process proof verifier. This requires no remote admin bearer
+  token, exposes no installation UUID or shared credential, rejects false
+  positives from a wrong Router, ngrok warning page and bad responses.
+- The `NgrokAgentIngressAdapter` now requires this **public instance
+  verification** after a claimed launch, before it can return readiness
+  to the IngressManager. Failure closes the exact newly owned launcher
+  handle and keeps the manager FENCED. Loopback integration tests use two
+  real Router instances; live ngrok is NOT reconfigured.
+- **Critical scope:** HMAC ownership proof establishes **which Router is
+  currently answering public requests**. It does **not** guarantee ngrok
+  provider-side non-pooling exclusivity, safe fencing after network
+  partitions, or OAuth continuity. Those remain prerequisites before
+  automatic takeover can be enabled.
+
+### Gated ingress supervisor (2026-10-12)
+
+- Added `IngressSupervisor`, a serialized, opt-in scheduler for the fenced
+  `IngressManager`. It consumes **fresh** local/peer capability snapshots,
+  renews the current leader without restarting ngrok, and drains on missing
+  health data, failed candidate discovery or explicit stop. Discovery has
+  a bounded timeout; a hung callback cannot keep an ACTIVE listener alive
+  forever. Stop waits for in-flight checks and will not report clean
+  shutdown if the manager cannot deactivate its owned endpoint.
+- Synthetic two-supervisor tests cover single owner under a shared injected
+  authority, clean takeover after release, health loss, hanging discovery,
+  concurrent ticks, and stop/activation races. **The mock authority is not
+  an ngrok provider guarantee.** The scheduler is not wired into the live
+  Mac LaunchAgent or allowed to start a production tunnel.
+- This provides the remaining orchestration skeleton, not automatic
+  takeover: real ngrok fencing/claim semantics, a provider-enforced launcher,
+  candidate discovery based on trusted identities, and ChatGPT OAuth
+  continuity are still outstanding.
+
 ### Local implementation checkpoint (2026-10-12)
 
 - Added **opt-in-by-new-code SSE-first Agent transport** using the existing

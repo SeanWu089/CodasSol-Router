@@ -52,13 +52,16 @@ function stubLauncher() {
   };
 }
 
+const ownerProof = { matches: () => true };
+const publicProbe = async () => ({ verified: true });
+
 test("adapter cannot run with only peer voting, a normal launcher, or a public backend", () => {
   const l = stubLauncher();
   const a = stubProvider();
   const args = {
     installationId: "windows-uuid",
     fixedDomain: domain, localRouterUrl: "http://127.0.0.1:17678",
-    launcher: l, authority: a
+    launcher: l, authority: a, ownerProof, publicProbe
   };
   assert.throws(() => new NgrokAgentIngressAdapter({
     ...args, authority: { verify() { return true; } }
@@ -81,7 +84,7 @@ test("manager and injected fenced ngrok adapter cooperate without stopping forei
     installationId: node.installationId,
     fixedDomain: domain,
     localRouterUrl: "http://127.0.0.1:17678",
-    authority: lease, launcher
+    authority: lease, launcher, ownerProof, publicProbe
   });
   const manager = new IngressManager({
     installationId: node.installationId, domain, lease, adapter, enabled: true,
@@ -111,7 +114,7 @@ test("a wrong target never replaces a healthy agent and cannot be declared ACTIV
     installationId: node.installationId,
     fixedDomain: domain,
     localRouterUrl: "http://127.0.0.1:17678",
-    authority: lease, launcher
+    authority: lease, launcher, ownerProof, publicProbe
   });
   const manager = new IngressManager({
     installationId: node.installationId, domain, lease, adapter,
@@ -119,6 +122,25 @@ test("a wrong target never replaces a healthy agent and cannot be declared ACTIV
   });
   const snapshot = await manager.reconcile({ local: node });
   assert.equal(snapshot.state, IngressState.FENCED);
+  assert.equal(launcher.processes[0].running, false);
+  assert.equal(lease.owner, null);
+});
+
+test("adapter refuses ACTIVE if the public domain resolves to a different Router", async () => {
+  const lease = stubProvider(), launcher = stubLauncher();
+  const adapter = new NgrokAgentIngressAdapter({
+    installationId: node.installationId, fixedDomain: domain,
+    localRouterUrl: "http://127.0.0.1:17678",
+    authority: lease, launcher, ownerProof,
+    publicProbe: async () => ({ verified: false, reason: "different_router_instance" })
+  });
+  const manager = new IngressManager({
+    installationId: node.installationId, domain, lease, adapter, enabled: true,
+    clock: () => 1000
+  });
+  const result = await manager.reconcile({ local: node });
+  assert.equal(result.state, IngressState.FENCED);
+  assert.equal(launcher.processes.length, 1);
   assert.equal(launcher.processes[0].running, false);
   assert.equal(lease.owner, null);
 });

@@ -11,6 +11,7 @@ import {
 } from "./mcp-routing.js";
 import { createRouterRuntime } from "./runtime.js";
 import { addRouterTools, deviceSnapshot } from "./mcp-device-tools.js";
+import { INGRESS_OWNER_PROOF_ROUTE } from "./ingress/public-owner-proof.js";
 
 const HOP_BY_HOP = new Set([
   "connection",
@@ -542,6 +543,19 @@ async function handleAgentRoute(req, res, runtime) {
 
 export function createRouterServer(config = loadConfig(), runtime = null) {
   return http.createServer(async (req, res) => {
+    if (req.url === INGRESS_OWNER_PROOF_ROUTE) {
+      if (req.method !== "POST" || !runtime?.ingressOwnerProof) {
+        sendJson(res, 404, { error: "not_found" });
+        return;
+      }
+      try {
+        const payload = await readJsonBody(req, { maxBytes: 256 });
+        sendJson(res, 200, runtime.ingressOwnerProof.respond(payload?.challenge));
+      } catch {
+        sendJson(res, 400, { error: "invalid_ingress_challenge" });
+      }
+      return;
+    }
     try {
       if (await handlePeerRoute(req, res, config, runtime)) return;
     } catch (error) {

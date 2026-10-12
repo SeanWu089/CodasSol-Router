@@ -33,6 +33,21 @@
 
 ## v0.3 transport decision — SSE-first, validate before implementation
 
+- [x] Add ephemeral per-Router HMAC public-domain challenge endpoint and
+  verify the candidate instance via the **fixed public HTTPS origin**
+  before any ngrok adapter activation reports ACTIVE. Two-Router loopback
+  test proves a wrong upstream is rejected; no remote admin token is sent.
+- [x] Add an opt-in `IngressSupervisor` that schedules manager reconciliation,
+  drains on stale/unavailable candidate snapshots, times out stalled probes,
+  serializes concurrent checks, and shuts down owned listeners safely.
+  Tested in two-supervisor simulation; **not running in installed Router**.
+- [ ] Wire real, device-bound candidate snapshots + verified ngrok
+  non-pooled claim/fencing into the supervisor. Never start its background
+  loop automatically while the provider is still a test fake.
+- [ ] Verify that the real ngrok provider enforces non-pooled endpoint
+  exclusivity/fencing during same-domain handoff; public owner identity
+  proof is necessary but does not substitute for external ownership.
+
 - [x] Fix false-offline status: SSE 60-second positive heartbeat with 90s
   per-device TTL, unchanged legacy 30s TTL, and no fabricated heartbeat on
   disconnect. Add clock-controlled regression and SSE subscription tests.

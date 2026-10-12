@@ -7,10 +7,13 @@
  * Do not replace the existing production tunnel with this until an external
  * claim primitive has been physically verified across Mac and Windows.
  */
+import { verifyPublicIngressOwner } from "./public-owner-proof.js";
+
 export class NgrokAgentIngressAdapter {
   #owned = null;
 
-  constructor({ installationId, fixedDomain, localRouterUrl, authority, launcher } = {}) {
+  constructor({ installationId, fixedDomain, localRouterUrl, authority, launcher,
+    ownerProof, publicProbe = verifyPublicIngressOwner } = {}) {
     if (typeof installationId !== "string" || !installationId.trim()) {
       throw new TypeError("Ngrok adapter requires immutable installation identity");
     }
@@ -38,11 +41,17 @@ export class NgrokAgentIngressAdapter {
           (name) => typeof launcher[name] !== "function")) {
       throw new TypeError("Ngrok launcher must enforce fencing and own its process handles");
     }
+    if (typeof ownerProof?.matches !== "function" ||
+        typeof publicProbe !== "function") {
+      throw new TypeError("Public ingress owner proof and probe are required");
+    }
     this.installationId = installationId;
     this.fixedDomain = domain.origin;
     this.localRouterUrl = backend.origin;
     this.authority = authority;
     this.launcher = launcher;
+    this.ownerProof = ownerProof;
+    this.publicProbe = publicProbe;
     this.fencedActivation = true;
   }
 
@@ -69,6 +78,12 @@ export class NgrokAgentIngressAdapter {
         status?.target !== this.localRouterUrl || status?.running !== true ||
         await this.authority.verify(claim, domain) !== true) {
       throw new Error("Owned ngrok endpoint did not pass identity/health/fencing preflight");
+    }
+    const publicOwner = await this.publicProbe({
+      publicUrl: this.fixedDomain, ownerProof: this.ownerProof
+    });
+    if (publicOwner?.verified !== true) {
+      throw new Error("Public ngrok address did not verify as this Router instance");
     }
     return { ready: true };
   }

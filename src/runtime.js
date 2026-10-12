@@ -8,6 +8,7 @@ import { RoutingPolicy } from "./routing-policy.js";
 import { WorkspaceBindingStore } from "./workspace-bindings.js";
 import { PeerMesh } from "./peer-mesh.js";
 import { createRouterPeerOAuth } from "./router-peer-oauth.js";
+import { createIngressOwnerProof } from "./ingress/public-owner-proof.js";
 
 export async function createRouterRuntime(config, {
   clock = () => Date.now(),
@@ -65,6 +66,7 @@ export async function createRouterRuntime(config, {
     bindings,
     routing: new RoutingPolicy({ devices, bindings }),
     agentHub: new AgentHub(),
+    ingressOwnerProof: createIngressOwnerProof(),
     localDeviceId: config.localDeviceId || "local",
     peerOAuth: await createRouterPeerOAuth(config, stateDir)
   };
