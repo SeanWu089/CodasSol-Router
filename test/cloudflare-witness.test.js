@@ -11,6 +11,7 @@ const windows = "windows-installation-12345";
 const checksum = (s) => createHash("sha256").update(s).digest("hex");
 const digestA = "A".repeat(43);
 const digestB = "B".repeat(43);
+const publicDomain = "https://stable-codas.example.test";
 
 function witness() {
   let state = emptyWitnessState();
@@ -33,11 +34,11 @@ test("exclusive claim, expiry and monotonic epochs survive owner changes", () =>
   const w = witness();
   const firstToken = "a".repeat(64);
   const secondToken = "b".repeat(64);
-  const claim = w.operate("acquire", mac, { ownerId: mac }, {
+  const claim = w.operate("acquire", mac, { ownerId: mac, domain: publicDomain }, {
     newToken: firstToken, newTokenHash: checksum(firstToken)
   });
   assert.equal(claim.epoch, 1);
-  assert.equal(w.operate("acquire", windows, { ownerId: windows }, {
+  assert.equal(w.operate("acquire", windows, { ownerId: windows, domain: publicDomain }, {
     newToken: secondToken, newTokenHash: checksum(secondToken)
   }), null);
   assert.equal(w.operate("verify", mac, { claim }, {
@@ -53,7 +54,7 @@ test("exclusive claim, expiry and monotonic epochs survive owner changes", () =>
   assert.equal(w.operate("verify", mac, { claim }, {
     presentedTokenHash: checksum(firstToken)
   }), false);
-  const next = w.operate("acquire", windows, { ownerId: windows }, {
+  const next = w.operate("acquire", windows, { ownerId: windows, domain: publicDomain }, {
     newToken: secondToken, newTokenHash: checksum(secondToken)
   });
   assert.equal(next.epoch, 2);
@@ -65,7 +66,7 @@ test("exclusive claim, expiry and monotonic epochs survive owner changes", () =>
 test("latest authorization digest never jumps, forks or resets across lease changes", () => {
   const w = witness();
   const t1 = "a".repeat(64), t2 = "b".repeat(64);
-  const c1 = w.operate("acquire", mac, { ownerId: mac }, {
+  const c1 = w.operate("acquire", mac, { ownerId: mac, domain: publicDomain }, {
     newToken: t1, newTokenHash: checksum(t1)
   });
   const act = (action, actor, claim, checkpoint, token) =>
@@ -90,7 +91,7 @@ test("latest authorization digest never jumps, forks or resets across lease chan
   assert.equal(w.operate("release", mac, { claim: c1 }, {
     presentedTokenHash: checksum(t1)
   }), true);
-  const c2 = w.operate("acquire", windows, { ownerId: windows }, {
+  const c2 = w.operate("acquire", windows, { ownerId: windows, domain: publicDomain }, {
     newToken: t2, newTokenHash: checksum(t2)
   });
   assert.equal(c2.epoch, 2);
@@ -131,11 +132,12 @@ test("HTTP client works with an independent witness and fails closed on outage",
   };
   const client = new CloudflareWitnessAuthority({
     endpoint: "https://witness.example.workers.dev",
+    publicDomain,
     installationId: windows, secret, fetchImpl: fakeFetch
   });
   assert.equal(client.enforcesExternalFencing, false,
     "control-plane lease alone cannot fence ngrok's data plane");
-  const claim = await client.acquire({ ownerId: windows });
+  const claim = await client.acquire({ ownerId: windows, domain: publicDomain });
   assert.equal(await client.verify(claim), true);
   assert.equal(await client.publishCommitted({ claim, checkpoint: {
     revision: 1, digest: digestA, previous: null
