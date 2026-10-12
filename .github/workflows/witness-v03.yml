@@ -26,3 +26,5 @@ jobs:
         run: node --test
       - name: Validate Cloudflare Worker bundle without deploying
         run: npx --yes wrangler@4 deploy --dry-run --outdir /tmp/codassol-witness-bundle --config deploy/cloudflare-witness/wrangler.jsonc
+      - name: Exercise isolated Cloudflare workerd HTTP runtime
+        run: node scripts/test-witness-worker-runtime.mjs
