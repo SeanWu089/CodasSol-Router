@@ -17,6 +17,10 @@
   server at the stable issuer: client registration/metadata, owner sign-in
   and approval, authorization code + PKCE S256, token issuance, refresh
   and safe revocation/key rollover. Preserve user consent semantics.
+- [x] Add an isolated authorization-code + S256 PKCE **grant core**:
+  pre-registered redirect whitelist, explicit owner approval flag,
+  one-time/expiring grants, stable resource URI, EdDSA access token
+  issuance and cross-node signature verification tests. NOT wired to HTTP.
 - [ ] Make OAuth client registration, refresh-token state and revocations
   durable and recoverable after a real Mac→Windows cutover; sync verified,
   device-scoped credentials securely. A 5-minute-only static revocation

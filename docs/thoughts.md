@@ -38,6 +38,24 @@
 - Reference: MCP authorization spec
   https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/docs/specification/2025-11-25/basic/authorization.mdx
 
+### Public OAuth authorization-code core (2026-10-12)
+
+- Added an **isolated** Ed25519 OAuth authorization-code issuer core
+  (`PublicOAuthPkceGrants`), with mandatory S256 PKCE, exact pre-registered
+  client/redirect allowlist, fixed MCP resource indicator, affirmative
+  owner-approval input, short-lived one-time authorization codes, and
+  10-minute resource/audience-bound JWT access tokens. A token issued by
+  this module passes the independent pinned-public-key verifier on a
+  different simulated Router. Tests reject mismatched redirects, wrong
+  resource, absent owner approval, plain PKCE, replay, bad verifier and
+  expired codes.
+- **No web endpoint is connected to the grant issuer.** The required
+  browser login/owner approval, client registration/discovery, consent UI,
+  durable grant storage, refresh-token family replay protection, shared
+  revocation state, and key rotation must be built and physically verified.
+  In-memory authorization codes do not survive a mid-login ingress cutover.
+  Therefore this is a building block, **not a production-ready OAuth server**.
+
 ### Public owner identity preflight (2026-10-12)
 
 - HTTP 200 `/_codassol/health` is **not an ingress ownership proof**: the
