@@ -1,5 +1,15 @@
 # Todos
 
+## 2026-10-12 — Native Windows connector and backend recovery
+
+- [x] Fix reproduced PowerShell stderr-triggered DevSpace restarts; deploy with ownership checks, backup and rollback, verify expected failed commands preserve the backend and subsequent real connector execution succeeds.
+
+- [x] Verify direct CodasSol Windows open_workspace, command execution, file read/patch/delete, and long-task polling without SSH.
+- [x] Add a guarded, opt-in backend recovery acceptance script to the Windows bundle and document its independent Scheduled Task execution.
+- [x] Verify the script parses on Windows and defaults to stopping no process; physically test recovery of the owned DevSpace process while preserving Router process/identity, then reverify real workspace execution and the original connector workspace.
+- [x] Audit stale process-session handles across backend restart: source counter reset and same-workspace native session 5 reuse were physically reproduced.
+- [ ] Priority: add generation-aware process handles/invalidation so pre-restart write_stdin cannot attach to another command; require a stale-handle regression before a stable reliability release. Persistent workspace ownership is a separate contract.
+
 ## 2026-10-12 — Network recovery and diagnostics
 
 - [x] Collect Windows health/tasks/boot and Mac tailnet evidence around the user-reported disconnect/reconnect; do not infer a sleeping PC or backend crash from remote timeouts.

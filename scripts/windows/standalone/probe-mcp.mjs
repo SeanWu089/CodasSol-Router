@@ -2,6 +2,7 @@
 // DevSpace OAuth client registration). Never prints private credentials.
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { execFileSync } from "node:child_process";
 
 const profile = process.env.USERPROFILE;
 const localData = process.env.LOCALAPPDATA;
@@ -17,7 +18,7 @@ const client = new DevSpaceLocalOAuth({
 const token = await client.accessToken();
 
 let rpcId = 0;
-async function rpc(method, params) {
+async function rpc(method, params, { allowToolError = false } = {}) {
   const body = { jsonrpc: "2.0", id: ++rpcId, method };
   if (params) body.params = params;
   const response = await fetch("http://127.0.0.1:17678/mcp", {
@@ -46,7 +47,7 @@ async function rpc(method, params) {
   } else {
     try { value = JSON.parse(payload); } catch { /* reported below */ }
   }
-  if (!response.ok || !value || value.error || value.result?.isError) {
+  if (!response.ok || !value || value.error || (value.result?.isError && !allowToolError)) {
     const text = (value?.result?.content || [])
       .map((item) => typeof item.text === "string" ? item.text : "")
       .join(" ")
@@ -72,6 +73,26 @@ const opened = await rpc("tools/call", {
 const workspaceId = opened?.structuredContent?.workspace_id;
 if (!workspaceId) throw new Error("open_workspace did not return a workspace_id");
 console.log("WORKSPACE_OPENED=true");
+
+if (process.argv.includes("--failed-command-check")) {
+  const listenerPid = () => execFileSync("powershell.exe", [
+    "-NoProfile", "-NonInteractive", "-Command",
+    "(Get-NetTCPConnection -LocalPort 7676 -State Listen).OwningProcess | Select-Object -First 1"
+  ], { encoding: "utf8" }).trim();
+  const before = listenerPid();
+  const failed = await rpc("tools/call", {
+    name: "exec_command",
+    arguments: { workspace_id: workspaceId, cmd: "cmd /c exit 7" }
+  }, { allowToolError: true });
+  if (failed.structuredContent?.exit_code !== 7) {
+    throw new Error("Expected command failure did not return exit code 7");
+  }
+  await new Promise((resolve) => setTimeout(resolve, 3000));
+  if (!before || listenerPid() !== before) {
+    throw new Error("An ordinary failed command restarted the DevSpace backend");
+  }
+  console.log("EXPECTED_TOOL_FAILURE_PRESERVED_BACKEND=" + before);
+}
 
 const ran = await rpc("tools/call", {
   name: "exec_command",

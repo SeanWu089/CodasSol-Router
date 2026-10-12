@@ -42,6 +42,23 @@ HEALTH
   Windows is logged in. A crashed Router is restarted after a short delay;
   an existing healthy Router is not duplicated if DevSpace alone is down.
 
+OPTIONAL BACKEND RECOVERY ACCEPTANCE
+  Ordinary tool failures must not restart DevSpace. After installation, run
+  the private Node runtime with probe-mcp.mjs --failed-command-check to verify
+  exit code 7 is returned, the backend PID stays unchanged, and hostname works.
+  PowerShell 5.1 stderr warnings are tolerated by the daemon supervisor;
+  genuine daemon exits still trigger recovery.
+  Run test-backend-recovery.ps1 -PerformCrashTest through a separate
+  Scheduled Task, not through the backend being tested. The test briefly
+  interrupts Windows MCP calls. It stops only the verified private DevSpace
+  listener, expects the existing supervisor to recover it, preserves Router
+  PID/installation identity, then opens a workspace and executes hostname.
+  Keep probe-mcp.mjs beside the test script. Without the opt-in switch no
+  process is stopped. Result: NodeV02Standalone/logs/backend-recovery-check.json.
+  Backend restart invalidates native process sessions even when workspace IDs
+  survive. Do not reuse old session IDs or replay uncertain commands. Current
+  DevSpace counters can restart at 1; generation-aware handles remain pending.
+
 RELIABILITY AND SECURITY
   This package does NOT bypass enterprise antivirus or application policy.
   If DevSpace dist/cli.js disappears or Windows blocks script execution,

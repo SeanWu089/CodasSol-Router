@@ -21,8 +21,20 @@ while ($true) {
     }
     try {
         Set-Location $env:USERPROFILE
-        & $node $cli serve 2>&1 |
-            Out-File -LiteralPath (Join-Path $logDir 'devspace.log') -Append -Encoding utf8
+        # PowerShell 5.1 converts native stderr into NativeCommandError records.
+        # DevSpace writes ordinary tool warnings there; they must not interrupt
+        # this daemon or destroy its unrelated running process sessions.
+        $preference = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        try {
+            & $node $cli serve 2>&1 |
+                Out-File -LiteralPath (Join-Path $logDir 'devspace.log') -Append -Encoding utf8 -ErrorAction Stop
+            $backendExit = $LASTEXITCODE
+        } finally {
+            $ErrorActionPreference = $preference
+        }
+        ('{0} DevSpace process exited with code {1}; restarting after cooldown.' -f (Get-Date -Format o), $backendExit) |
+            Out-File -LiteralPath (Join-Path $logDir 'devspace-supervisor.log') -Append -Encoding utf8
     } catch {
         ('{0} DevSpace exited: {1}' -f (Get-Date -Format o), $_.Exception.Message) |
             Out-File -LiteralPath (Join-Path $logDir 'devspace-supervisor.log') -Append -Encoding utf8
