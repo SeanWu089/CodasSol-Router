@@ -18,7 +18,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Verify independent witness state and Router HTTP client
+      - name: Install Node test dependencies\n        run: npm install --no-package-lock --ignore-scripts\n      - name: Verify independent witness state and Router HTTP client
         run: node --test test/cloudflare-witness.test.js
       - name: Verify full Linux Node suite
         run: node --test
