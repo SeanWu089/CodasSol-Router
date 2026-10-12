@@ -27,7 +27,7 @@ separate.
 
 ## Setup (future, opt-in)
 
-1. Ensure Cloudflare Workers access with SQLite-backed Durable Objects.
+1. Ensure Cloudflare Workers access with SQLite-backed Durable Objects.\n   Set `CODASSOL_PUBLIC_DOMAIN` in `wrangler.jsonc` to your exact, bare\n   fixed `https://...` MCP origin; deployment starts with a deliberately\n   unusable placeholder until this is configured.
 2. Generate **two separate 256-bit random hex bearer tokens** using a
    trusted local secrets manager; never commit or paste them into issues.
 3. From this directory, deploy with the current Wrangler CLI. Configure the
@@ -35,7 +35,7 @@ separate.
    immutable installation IDs to their 64-character random hex tokens.
    Use `wrangler secret put CODASSOL_NODE_TOKENS` to enter it securely.
 4. Configure each Router independently with its own
-   `CloudflareWitnessAuthority` client pointing to the new HTTPS
+   `CloudflareWitnessAuthority` client with the same exact `publicDomain`\n   pointing to the new HTTPS
    `*.workers.dev` endpoint. Keep these secrets out of command-line
    arguments, logs, GitHub and the public browser.
 5. Test acquire/verify/renew/release, commit monotonicity, simultaneous
@@ -49,7 +49,7 @@ separate.
   The existing `NgrokAgentIngressAdapter` therefore **must reject it**
   as a stand-alone ingress authority. Provider/data-plane enforcement
   needs separate real-world verification.
-- An authenticated leader may publish a monotonically increasing
+- A witness lease is permanently pinned to one `publicDomain`, and\n  requests for a different public origin are rejected.\n- An authenticated leader may publish a monotonically increasing
   checkpoint digest. It is responsible for publishing **only after the
   two-phase signed replica commit has completed**. This branch does not
   yet wire that publication to `MirroredAuthWriter`. Promotion MUST
