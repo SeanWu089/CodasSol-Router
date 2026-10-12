@@ -61,9 +61,12 @@ try {
   const deny = await call("acquire", mac, { ownerId: mac, domain }, false);
   assert.equal(deny.status, 401);
 
+  const before = await call("status", mac);
+  console.log("witness startup:", JSON.stringify(before));
   const first = await call("acquire", mac, { ownerId: mac, domain });
+  console.log("first acquire:", JSON.stringify(first));
   assert.equal(first.status, 200);
-  assert.equal(first.data.result.epoch, 1);
+  assert.equal(first.data.result?.epoch, 1, "first acquisition: " + JSON.stringify(first));
   const macClaim = first.data.result;
   assert.ok(macClaim.fencingToken.length >= 32);
 
