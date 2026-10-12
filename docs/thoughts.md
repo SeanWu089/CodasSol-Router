@@ -41,6 +41,29 @@
   OAuth service swap. The test gate is opt-in and must not be
   considered proof of safe live failover.
 
+### ngrok provider boundary — architecture review (2026-10-12)
+
+- ngrok's assigned Free dev domain remains stable across Agent restarts,
+  but this says nothing about a distributed authorization write log.
+  Source: https://ngrok.com/blog/free-static-domains-ngrok-users
+- Agent Endpoints are tied to the lifetime of an Agent process; Cloud
+  Endpoints are separately provisioned resources and may require a paid
+  plan depending on features. Pooling performs traffic distribution,
+  not a strongly consistent compare-and-swap operation for the
+  latest OAuth grant revision. An ngrok Failover Backend API exists in
+  some versions of ngrok's backend API, but its availability on this
+  account and suitability for **the exact same free dev endpoint** have
+  NOT been verified.
+  Sources: https://ngrok.com/docs/ai-gateway/guides/creating-endpoints
+  and https://ngrok.com/docs/universal-gateway/global-load-balancer
+  and https://python-api.docs.ngrok.com/failover_backends.html
+- Implementation decision: treat the public endpoint provider and the
+  committed OAuth-state/fencing authority as **independent interfaces**.
+  The current `IngressManager` calls an optional activation preflight
+  only after receiving a valid exclusive claim and before starting the
+  public listener; until both real external interfaces and a physical
+  cutover test exist, automatic promotion must remain **disabled**.
+
 ### Synchronous encrypted OAuth state mirroring — isolated prototype (2026-10-12)
 
 - Added `auth-replica-checkpoint.js`: a **per-recipient encrypted** X25519
