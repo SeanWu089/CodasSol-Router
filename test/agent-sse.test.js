@@ -78,6 +78,55 @@ test("SSE unsupported response uses legacy fallback without retrying authorizati
   assert.ok(reconnectDelayMs(10, () => 1) <= 40_000);
 });
 
+test("SSE events pass through a local streaming HTTP reverse proxy", async () => {
+  const upstream = http.createServer((_req, res) => {
+    res.writeHead(200, {
+      "content-type": "text/event-stream; charset=utf-8",
+      "cache-control": "no-cache"
+    });
+    res.flushHeaders();
+    res.write(": keepalive\n\n");
+    const timer = setTimeout(() => {
+      if (!res.destroyed) {
+        res.write('event: job\ndata: {"job":{"id":"proxy-job","payload":{"type":"devspace-http"}}}\n\n');
+      }
+    }, 30);
+    res.once("close", () => clearTimeout(timer));
+  });
+  const port = await listen(upstream);
+  const proxy = http.createServer((req, res) => {
+    const forward = http.request({
+      host: "127.0.0.1", port, path: req.url, method: req.method,
+      headers: req.headers
+    }, (incoming) => {
+      res.writeHead(incoming.statusCode, incoming.headers);
+      incoming.pipe(res);
+    });
+    forward.on("error", () => res.destroy());
+    res.on("close", () => forward.destroy());
+    req.pipe(forward);
+  });
+  const proxyPort = await listen(proxy);
+  const controller = new AbortController();
+  const jobs = [];
+  try {
+    await consumeAgentEvents({
+      url: `http://127.0.0.1:${proxyPort}/events`, token: "demo-only",
+      signal: controller.signal,
+      onJob: async (job) => { jobs.push(job); controller.abort(); }
+    });
+    assert.deepEqual(jobs.map((job) => job.id), ["proxy-job"]);
+  } finally {
+    controller.abort();
+    proxy.closeAllConnections();
+    upstream.closeAllConnections();
+    await Promise.all([
+      new Promise((resolve) => proxy.close(resolve)),
+      new Promise((resolve) => upstream.close(resolve))
+    ]);
+  }
+});
+
 test("AgentHub never replaces an active consumer or duplicates an already-delivered job", async () => {
   const hub = new AgentHub();
   const queued = hub.enqueue("win", { type: "devspace-http" }, { timeoutMs: 1_000 });

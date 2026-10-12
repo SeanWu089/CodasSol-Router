@@ -33,6 +33,17 @@
 
 ## v0.3 transport decision — SSE-first, validate before implementation
 
+- [x] Verify local streaming reverse-proxy delivery and run sticky-failover,
+  partition/concurrent-acquisition simulated tests. Node suite 78/78 passed
+  on 2026-10-12. These use a mock authority, not the live ngrok data plane.
+- [x] Read-only production ingress diagnostics: Mac health 200, public health
+  200, unauthenticated MCP 401, and correct local ngrok tunnel. No service
+  changes. Mac-to-Windows HTTPS was unreachable during this check.
+- [ ] Wait for physical Windows Router/network reachability and a safe
+  **separate public test-domain environment**, or an explicitly planned
+  maintenance cutover, before testing ngrok SSE streaming and same-domain
+  takeover. Do not use the sole Free dev domain for competing live experiments.
+
 - [x] Compare short HTTP polling, HTTP long polling, SSE, WebSocket and
   ngrok Endpoint Pooling against simplicity, latency, free-plan usage and
   single-owner stability; record the SSE-first decision and trade-offs in

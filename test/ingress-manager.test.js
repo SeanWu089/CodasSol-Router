@@ -153,6 +153,73 @@ test("two qualified hosts cannot activate the same fixed URL", async () => {
   assert.equal(winAdapter.active, true);
 });
 
+test("Sticky Leader keeps Windows active after Mac recovers without preemption", async () => {
+  const lease = coordinator();
+  const macAdapter = adapter(lease);
+  const winAdapter = adapter(lease);
+  const macNode = eligibleNode("mac", { priority: 99 });
+  const winNode = eligibleNode("windows", { priority: 1 });
+  const mac = new IngressManager({
+    installationId: "mac", domain, lease, adapter: macAdapter,
+    enabled: true, clock: () => 1000
+  });
+  const windows = new IngressManager({
+    installationId: "windows", domain, lease, adapter: winAdapter,
+    enabled: true, clock: () => 1000
+  });
+  assert.equal((await mac.reconcile({ local: macNode })).state, IngressState.ACTIVE);
+  assert.equal((await windows.reconcile({
+    local: winNode, peers: [macNode], incumbentId: "mac"
+  })).state, IngressState.STANDBY);
+
+  // Simulate clean departure followed by Windows assuming ingress.
+  mac.enabled = false;
+  assert.equal((await mac.reconcile({ local: macNode })).state, IngressState.DISABLED);
+  assert.equal((await windows.reconcile({ local: winNode })).state, IngressState.ACTIVE);
+  assert.equal(lease.activeOwner(), "windows");
+
+  // A newly rebooted Mac has a higher priority but MUST NOT reclaim.
+  const recoveredAdapter = adapter(lease);
+  const recoveredMac = new IngressManager({
+    installationId: "mac", domain, lease, adapter: recoveredAdapter,
+    enabled: true, clock: () => 1000
+  });
+  assert.equal((await recoveredMac.reconcile({
+    local: macNode, peers: [winNode], incumbentId: "windows"
+  })).state, IngressState.STANDBY);
+  // Even stale peer discovery cannot defeat the external exclusive claim.
+  assert.equal((await recoveredMac.reconcile({ local: macNode, peers: [] })).state,
+    IngressState.STANDBY);
+  assert.equal(recoveredAdapter.starts, 0);
+  assert.equal((await windows.reconcile({ local: winNode })).state,
+    IngressState.ACTIVE);
+  assert.equal(winAdapter.starts, 1);
+  assert.equal(lease.activeOwner(), "windows");
+});
+
+test("simulated network partition cannot produce two ingress owners", async () => {
+  const lease = coordinator();
+  const macAdapter = adapter(lease);
+  const winAdapter = adapter(lease);
+  const mac = new IngressManager({
+    installationId: "mac", domain, lease, adapter: macAdapter,
+    enabled: true, clock: () => 1000
+  });
+  const windows = new IngressManager({
+    installationId: "windows", domain, lease, adapter: winAdapter,
+    enabled: true, clock: () => 1000
+  });
+  // Both are unaware of the other due to a partition; their local candidate
+  // decisions conflict, but an authoritative exclusive claim gates activation.
+  const snapshots = await Promise.all([
+    mac.reconcile({ local: eligibleNode("mac"), peers: [] }),
+    windows.reconcile({ local: eligibleNode("windows"), peers: [] })
+  ]);
+  assert.equal(snapshots.filter((s) => s.state === IngressState.ACTIVE).length, 1);
+  assert.equal(Number(macAdapter.active) + Number(winAdapter.active), 1);
+  assert.ok(["mac", "windows"].includes(lease.activeOwner()));
+});
+
 test("unconfirmed identity or invalid lease proof NEVER starts an adapter", async () => {
   const faultyLease = {
     acquire: async () => ({

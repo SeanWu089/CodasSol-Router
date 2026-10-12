@@ -23,6 +23,27 @@
   Ownership fencing, shared OAuth acceptance and real dual-host cutover
   remain separate unfinished milestones.
 
+### Verification checkpoint — isolated tests only (2026-10-12)
+
+- **PASS:** authenticated SSE task delivery/result POST over a local
+  streaming HTTP reverse proxy; Sticky Leader keeps Windows active after a
+  simulated Mac recovery; simulated simultaneous acquisition during a peer
+  partition activates only one host **when a true exclusive lease provider
+  is injected**. Full Node suite: 78/78 pass.
+- **Live production ingress read-only checks PASS:** Mac local Router health
+  HTTP 200, same public ngrok domain health HTTP 200, unauthenticated public
+  MCP HTTP 401, local ngrok Agent inspection matches expected Router upstream.
+  This does **not** verify user OAuth across machines or public SSE transport.
+- **BLOCKED:** direct Mac-to-Windows peer HTTPS probe timed out, so there is
+  no physical two-host takeover result. macOS Tailscale CLI was unavailable
+  in this worktree's shell (not proof the network itself is absent).
+- **Do not disturb production:** ngrok's Free plan currently permits one
+  assigned development domain. Starting an isolated second public ngrok
+  endpoint on this same account could conflict with the current domain;
+  no such competing endpoint was launched. ngrok documentation says its
+  dev domain forwards SSE, but actual ngrok SSE behavior and **same-domain
+  exclusivity/fencing** remain untested on these devices.
+
 **Architecture keywords:** `Single Stable MCP URL` · `Sticky Leader` ·
 `Passive Failover` · `HTTPS SSE (Server-Sent Events)` ·
 `Outbound-Only Agent` · `HTTP POST Result` · `Heartbeat/Keepalive` ·
