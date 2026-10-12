@@ -2,6 +2,12 @@
 
 ## v0.3: public OAuth continuity (in progress, 2026-10-12)
 
+- [x] Verify the actual Cloudflare witness client against the
+  simulated ingress activation state machine and signed replica store:
+  prepared-only state, absent authoritative latest proof and witness
+  outage all block startup; matching COMMITTED state allows mock
+  activation. Retain the mandatory external data-plane fencing gate.
+
 - [x] Implement two-phase auth replication: signed/encrypted PREPARED
   snapshot, durable local source commit, signed COMMITTED certificate,
   durable standby confirmation and source-side ACK before returning
