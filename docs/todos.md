@@ -41,6 +41,17 @@
   drains on stale/unavailable candidate snapshots, times out stalled probes,
   serializes concurrent checks, and shuts down owned listeners safely.
   Tested in two-supervisor simulation; **not running in installed Router**.
+- [x] Enable an independent Router to enroll as its own authenticated
+  outbound SSE standby Agent, pinned to its immutable installation ID,
+  approved roots and exact loopback DevSpace target. Two independent
+  Router instances on Mac loopback demonstrated task delivery and
+  execution/result return with **no direct PeerMesh/VPN path**.
+- [ ] Integrate `runStandbyRouterAgent` with the native Mac/Windows
+  service lifecycle and ingress role transitions (drain before claiming
+  ownership); validate actual Windows and ngrok HTTPS separately.
+- [ ] Preserve Agent enrollment/token acceptance when the entrypoint
+  changes hosts; current tokens are issued by an individual Router and
+  do not transfer automatically. Also complete public OAuth continuity.
 - [ ] Wire real, device-bound candidate snapshots + verified ngrok
   non-pooled claim/fencing into the supervisor. Never start its background
   loop automatically while the provider is still a test fake.

@@ -42,6 +42,28 @@
   candidate discovery based on trusted identities, and ChatGPT OAuth
   continuity are still outstanding.
 
+### Independent Router as outbound SSE standby (2026-10-12)
+
+- Added `src/standby-router-agent.js` as an explicit, **opt-in**
+  pairing and execution wrapper that lets a fully independent Router
+  also act as its own outbound SSE Agent. It reuses the authenticated
+  `enroll / heartbeat / events / result` protocol rather than requiring
+  an incoming per-device peer endpoint or Tailscale. The pairing token
+  is used transiently and not stored; the local config pins immutable
+  Router `installationId`, `device.id`, authorized roots and exact
+  loopback DevSpace endpoint. A wrong installation, target, or backend
+  fails closed. Active leaders cannot start the standby channel.
+- Two **independent Router runtimes started on Mac loopback** passed
+  an end-to-end test: Mac Router enqueued a task for the simulated
+  Windows Router, which consumed SSE and executed against its own
+  mocked local DevSpace using only a local OAuth bearer. Result returned
+  to Mac. Neither Router had a configured PeerMesh peer or VPN path.
+- **Not installed on physical Windows.** No live dual-host ngrok handoff,
+  no persistent bidirectional Agent credential replication, and no
+  seamless re-enrollment after leadership changes. This wrapper is a
+  building block; future role changes must safely stop outbound work
+  before enabling a newly fenced ingress.
+
 ### Local implementation checkpoint (2026-10-12)
 
 - Added **opt-in-by-new-code SSE-first Agent transport** using the existing
