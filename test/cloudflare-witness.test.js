@@ -148,5 +148,5 @@ test("HTTP client works with an independent witness and fails closed on outage",
   assert.equal(await client.verify(claim), false);
   outage = true;
   await assert.rejects(client.status(), /offline/);
-  assert.equal(requests.length, 6);
+  assert.equal(requests.length, 7);
 });
