@@ -4,6 +4,9 @@
   "main": "worker.js",
   "compatibility_date": "2026-10-12",
   "workers_dev": true,
+  "vars": {
+    "CODASSOL_PUBLIC_DOMAIN": "https://replace-with-your-fixed-domain.example"
+  },
   "durable_objects": {
     "bindings": [
       { "name": "WITNESS", "class_name": "CodasSolWitness" }
