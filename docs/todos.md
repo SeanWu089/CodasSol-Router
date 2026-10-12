@@ -2,6 +2,24 @@
 
 ## v0.3: public OAuth continuity (in progress, 2026-10-12)
 
+- [x] Wire experimental public ingress request fence into Router startup
+  via a dedicated private config file. Pin immutable installation ID,
+  issuer, role, witness identity and separate local claim/state files.
+  Require 0600 permissions on secrets; refuse malformed/mismatched
+  provisioning and missing public OAuth. No production auto-enable.
+- [x] Add read-only, credential-redacting staging preflight command
+  `node scripts/check-public-ingress.mjs` to inspect only local claim
+  presence and committed state. Remote witness and provider-side ingress
+  ownership are explicitly not tested by this command.
+- [x] Implement the isolated, guarded lease lifecycle library: explicit
+  acquire/renew/release, atomically persisted per-installation claim,
+  same-host exclusive lock, and fail-closed expiry/network failure.
+  It never starts ngrok and is not scheduled automatically.
+- [ ] Package and verify the lease-keeper as a separately provisioned,
+  supervised service with a real deployed Cloudflare authority, persistent
+  recovery/fencing and physical Mac/Windows failure tests. Do not use
+  it to activate a public tunnel until data-plane exclusivity is proven.
+
 - [x] Add opt-in public MCP/OAuth per-request external witness fence:
   current-claim lease verification, fresh locally COMMITTED and
   latest-authoritative digest match, rechecks for lease/state race,

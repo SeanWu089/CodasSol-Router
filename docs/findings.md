@@ -1,5 +1,26 @@
 # Findings
 
+- 2026-10-12 — Added `WitnessLeaseKeeper` as an isolated, explicitly
+  invoked control-plane building block: atomic mode-0600 claim creation,
+  external acquire/renew/release, same-host exclusive lock, epoch/secret
+  consistency checks, expired-token rejection, and fail-closed
+  invalidation on lease uncertainty. It does not start ngrok, declare
+  data-plane fencing, install itself or create a recurring scheduler.
+  Interrupted operations intentionally require reconciliation rather
+  than automatic re-acquisition. Unit tests use the real HTTPS client
+  protocol against a simulated strongly consistent witness.
+
+- 2026-10-12 — Staging public ingress protection is now wired into the
+  experimental Router startup via an independent private, mode-0600
+  `CODASSOL_PUBLIC_INGRESS_FENCE_FILE`. It must match the Router's
+  persisted immutable installation identity and the public OAuth issuer.
+  Startup provisions a Cloudflare witness HTTP client, read-only local
+  lease-claim loader and leader/follower COMMITTED-state reader; a missing
+  OAuth verifier or invalid file fails closed. No cloud call or lease
+  acquisition happens at startup. The production Mac Router config is
+  unchanged. A separate no-secret read-only preflight CLI reports local
+  readiness without implying remote ownership.
+
 - 2026-10-12 — Added an **opt-in per-public-request ingress fence** for
   experimental v0.3 public OAuth. A live Router checks its current pinned
   installation lease, a fresh and locally COMMITTED auth checkpoint, and
