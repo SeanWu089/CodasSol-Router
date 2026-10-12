@@ -154,6 +154,13 @@ async function executeHttpJob(configStore, config, payload) {
   };
 }
 
+export function isExpiredAgentJob(job, now = Date.now()) {
+  // Legacy v0.1/v0.2 Routers did not send a deadline. Retain compatibility
+  // during rolling upgrades; new Routers always attach expiresAt.
+  return job && Object.hasOwn(job, "expiresAt") &&
+    (!Number.isSafeInteger(job.expiresAt) || now >= job.expiresAt);
+}
+
 export async function runAgent({
   configStore = new AgentConfigStore(),
   stopSignal = () => false,
@@ -169,6 +176,12 @@ export async function runAgent({
     timeoutMs: 10_000
   });
   const reportJob = async (job) => {
+    if (isExpiredAgentJob(job)) {
+      // The Router has already rejected the caller's request, so there is
+      // nothing to acknowledge. Never run a late file mutation or command.
+      process.stderr.write("CodasSol Agent discarded expired job before execution\n");
+      return;
+    }
     let body;
     try {
       const result = await executeHttpJob(configStore, config, job.payload);
@@ -198,7 +211,7 @@ export async function runAgent({
     try {
       if (Date.now() >= heartbeatAt) {
         await heartbeat();
-        // Positive agent liveness: ~1,440 requests / 30 days per node,
+        // Positive agent liveness: ~720 requests / 30 days per node,
         // instead of ~259,200 at ten-second intervals.
         heartbeatAt = Date.now() + 60_000;
       }

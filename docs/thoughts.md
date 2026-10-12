@@ -44,6 +44,41 @@
   dev domain forwards SSE, but actual ngrok SSE behavior and **same-domain
   exclusivity/fencing** remain untested on these devices.
 
+### Agent presence correction (2026-10-12)
+
+- Found a real mismatch: the new SSE Agent positively heartbeats every 60
+  seconds, while Device Registry previously expired ALL heartbeat Agents
+  after 30 seconds. A healthy SSE subscriber could therefore appear offline
+  for half of its heartbeat cycle. **Fix:** set a per-Agent 90-second TTL
+  only after an authenticated SSE subscription is established; preserve the
+  legacy 30-second TTL for non-SSE Agents. Revert to 30 seconds when SSE
+  disconnects **without refreshing lastSeenAt** (disconnect is not proof of
+  positive liveness). Tested with a simulated clock and real local SSE setup.
+- The original SSE Agent comment overestimated quota: one positive POST
+  heartbeat per 60 seconds is approximately **720 requests / 30 days**
+  per node, not 1,440; add SSE handshakes, reconnects, job results, and
+  MCP requests when estimating ngrok Free account consumption.
+- **Still blocked:** real handoff needs working Windows connectivity,
+  externally enforced ownership/fencing, and **independent OAuth continuity**.
+  Signed-token proof-of-concept files remain separate/unintegrated.
+
+### Queued-job safety and compatibility economics (2026-10-12)
+
+- A job can be written into an SSE socket buffer but not processed until
+  after the ingress caller has already timed out. To prevent an old command
+  from starting late, new `AgentHub.enqueue` envelopes include
+  `expiresAt = createdAt + timeoutMs`. The v0.3 Agent rejects an expired
+  envelope **before** local DevSpace execution (both SSE and polling paths).
+  This does not cancel a command that started before expiry; such work
+  remains in-flight/uncertain across failover and must never be auto-replayed.
+  Legacy Router jobs without `expiresAt` are allowed for rolling upgrades.
+- **Fallback tradeoff:** the original `/agent/poll` waits up to ~25 seconds,
+  so an always-connected idle Agent may issue approximately **103,680 public
+  polling requests per 30 days**, before heartbeat POSTs. A long-term
+  installation cannot depend on this fallback with ngrok Free's 20k-request
+  monthly quota. Compatibility fallback must be temporary, explicitly
+  quota-budgeted or deliberately much slower if a Router cannot do SSE.
+
 **Architecture keywords:** `Single Stable MCP URL` · `Sticky Leader` ·
 `Passive Failover` · `HTTPS SSE (Server-Sent Events)` ·
 `Outbound-Only Agent` · `HTTP POST Result` · `Heartbeat/Keepalive` ·

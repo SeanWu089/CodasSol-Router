@@ -33,6 +33,17 @@
 
 ## v0.3 transport decision — SSE-first, validate before implementation
 
+- [x] Fix false-offline status: SSE 60-second positive heartbeat with 90s
+  per-device TTL, unchanged legacy 30s TTL, and no fabricated heartbeat on
+  disconnect. Add clock-controlled regression and SSE subscription tests.
+- [x] Add `expiresAt` to newly queued jobs and reject expired work at the
+  Agent **before** executing on DevSpace, even when a job was buffered
+  inside an open SSE connection. Leave legacy Router jobs compatible.
+- [ ] Define the policy for temporary legacy fallback under ngrok Free:
+  continuous 25-second long-poll requests alone exceed 100k/30-day Agent.
+  Decide between fail-closed quota warning, explicit slow fallback, or
+  automatic SSE-only upgrade; do not claim fallback is cost-free.
+
 - [x] Verify local streaming reverse-proxy delivery and run sticky-failover,
   partition/concurrent-acquisition simulated tests. Node suite 78/78 passed
   on 2026-10-12. These use a mock authority, not the live ngrok data plane.

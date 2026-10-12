@@ -55,10 +55,18 @@ export class AgentHub {
   }
 
   enqueue(deviceId, payload, { timeoutMs = 30_000 } = {}) {
+    if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 3_600_000) {
+      throw new RangeError("Agent job timeout must be 1ms–1 hour");
+    }
     const jobId = randomUUID();
+    const createdAt = Date.now();
     const job = {
       id: jobId,
-      createdAt: Date.now(),
+      createdAt,
+      // The Agent must not start an old mutation after the caller timed out.
+      // Enforced by v0.3 Agents before dispatch, even for already-streamed
+      // jobs that could not be retracted from TCP buffers.
+      expiresAt: createdAt + timeoutMs,
       payload
     };
     return new Promise((resolve, reject) => {

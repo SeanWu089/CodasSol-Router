@@ -4,8 +4,9 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { runAgent } from "../src/agent.js";
+import { isExpiredAgentJob, runAgent } from "../src/agent.js";
 import { AgentHub } from "../src/agent-hub.js";
+import { DeviceRegistry } from "../src/device-registry.js";
 import { consumeAgentEvents, reconnectDelayMs, SseUnavailableError } from "../src/agent-sse.js";
 import { createRouterRuntime } from "../src/runtime.js";
 import { createRouterServer } from "../src/server.js";
@@ -158,6 +159,29 @@ test("Timed-out offline jobs are removed and never executed after SSE reconnect"
   unsubscribe();
 });
 
+test("Agent rejects already-streamed jobs whose execution deadline has passed", async () => {
+  const hub = new AgentHub();
+  const jobs = [];
+  const unsubscribe = hub.subscribe("windows", (job) => {
+    jobs.push(job);
+    return true;
+  });
+  const pending = hub.enqueue("windows", { type: "mutating-command" }, {
+    timeoutMs: 10
+  });
+  assert.equal(jobs.length, 1, "job was pushed to SSE but not processed");
+  assert.equal(isExpiredAgentJob(jobs[0], jobs[0].createdAt + 5), false);
+  assert.equal(isExpiredAgentJob(jobs[0], jobs[0].expiresAt), true);
+  assert.equal(isExpiredAgentJob({ id: "v01-legacy" }), false);
+  assert.equal(isExpiredAgentJob({ expiresAt: "bad" }), true);
+  await Promise.all([
+    assert.rejects(pending, { code: "AGENT_JOB_TIMEOUT" }),
+    new Promise((resolve) => setTimeout(resolve, 25))
+  ]);
+  unsubscribe();
+  assert.equal(hub.complete("windows", jobs[0].id, { statusCode: 200 }), false);
+});
+
 test("AgentHub shutdown closes only the live SSE consumers", async () => {
   const hub = new AgentHub();
   let closed = 0;
@@ -166,6 +190,25 @@ test("AgentHub shutdown closes only the live SSE consumers", async () => {
   assert.equal(closed, 1);
   const unsubscribe = hub.subscribe("win", () => true);
   unsubscribe();
+});
+
+test("SSE 60-second heartbeat remains online without extending legacy Agent TTL", () => {
+  let clock = 0;
+  const devices = new DeviceRegistry({ clock: () => clock, heartbeatTtlMs: 30_000 });
+  devices.register({
+    id: "sse", platform: "win32", roots: ["C:\\Projects"],
+    heartbeatTtlMs: 90_000
+  });
+  devices.register({ id: "legacy", platform: "win32", roots: ["C:\\Projects"] });
+  clock = 45_000;
+  assert.equal(devices.get("sse").online, true, "SSE must not show false offline");
+  assert.equal(devices.get("legacy").online, false, "legacy timeout stays at 30s");
+  const lastSeen = devices.get("sse").lastSeenAt;
+  devices.setHeartbeatTtl("sse", 30_000);
+  assert.equal(devices.get("sse").lastSeenAt, lastSeen,
+    "closing SSE must not fake a heartbeat");
+  assert.equal(devices.get("sse").online, false);
+  assert.throws(() => devices.setHeartbeatTtl("sse", 500_000), /1-300 seconds/);
 });
 
 test("Router SSE authenticates Agent, delivers scoped jobs, accepts result POST and releases subscriber", async () => {
@@ -213,6 +256,7 @@ test("Router SSE authenticates Agent, delivers scoped jobs, accepts result POST 
     });
     await ready;
     assert.equal(runtime.devices.get("windows").online, true);
+    assert.equal(runtime.devices.get("windows").heartbeatTtlMs, 90_000);
     const duplicate = await fetch(`${base}/events`, {
       headers: { authorization: `Bearer ${token}` }
     });

@@ -379,12 +379,14 @@ function ensureRegisteredDevice(runtime, identity, patch = {}) {
       platform: identity.platform,
       presence: "heartbeat",
       roots: patch.roots ?? identity.roots ?? [],
-      capabilities: patch.capabilities ?? identity.capabilities ?? []
+      capabilities: patch.capabilities ?? identity.capabilities ?? [],
+      ...(patch.heartbeatTtlMs ? { heartbeatTtlMs: patch.heartbeatTtlMs } : {})
     });
   }
   return runtime.devices.heartbeat(identity.id, {
     roots: patch.roots ?? existing.roots,
-    capabilities: patch.capabilities ?? existing.capabilities
+    capabilities: patch.capabilities ?? existing.capabilities,
+    ...(patch.heartbeatTtlMs ? { heartbeatTtlMs: patch.heartbeatTtlMs } : {})
   });
 }
 
@@ -444,7 +446,6 @@ async function handleAgentRoute(req, res, runtime) {
   }
 
   if (req.url === "/_codassol/agent/events" && req.method === "GET") {
-    ensureRegisteredDevice(runtime, identity);
     // SSE is downstream-only. Agent results and positive liveness reports
     // continue to use authenticated POSTs. Keepalive comments are not ACKs.
     const sendEvent = (name, data) => {
@@ -467,6 +468,7 @@ async function handleAgentRoute(req, res, runtime) {
       sendJson(res, 409, { error: error.code || "agent_consumer_active" });
       return true;
     }
+    ensureRegisteredDevice(runtime, identity, { heartbeatTtlMs: 90_000 });
     res.writeHead(200, {
       "content-type": "text/event-stream; charset=utf-8",
       "cache-control": "no-cache, no-transform",
@@ -491,6 +493,12 @@ async function handleAgentRoute(req, res, runtime) {
       cleaned = true;
       clearInterval(keepalive);
       unsubscribe();
+      // Drop back to the legacy timeout only when a stream really closes;
+      // a GET request finishing by itself is not an SSE disconnection.
+      const device = runtime.devices.get(identity.id);
+      if (device?.heartbeatTtlMs === 90_000) {
+        runtime.devices.setHeartbeatTtl(identity.id, 30_000);
+      }
     };
     res.once("close", cleanup);
     req.once("close", () => {
