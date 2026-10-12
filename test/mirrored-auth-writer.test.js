@@ -186,3 +186,19 @@ test("mirrored writer refuses to silently replace existing single-host OAuth gra
       .records["existing-grant"], "legacy grant must remain untouched");
   });
 });
+
+test("unchanged OAuth state receives a new, durable acknowledgement without fabricated revocations", async () => {
+  await fixture(async ({ createWriter, sourceFile, standbyFile }) => {
+    const writer = createWriter();
+    assert.deepEqual(await writer.attestUnchangedState(), { attested: true });
+    assert.deepEqual(await writer.attestUnchangedState(), { attested: true });
+    const source = JSON.parse(await readFile(sourceFile, "utf8"));
+    const backup = JSON.parse(await readFile(standbyFile, "utf8"));
+    assert.equal(source.authRevision, 2);
+    assert.equal(backup.checkpoint.revision, 2);
+    assert.equal(source.lastReplicaDigest, backup.checkpoint.digest);
+    assert.deepEqual(source.namespaces.revocations.records, {});
+    assert.deepEqual(backup.namespaces.revocations.records, {});
+    assert.ok(Date.now() - backup.lastReplicaAckAt < 3_000);
+  });
+});

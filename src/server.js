@@ -656,9 +656,14 @@ export function createRouterServer(config = loadConfig(), runtime = null) {
         // Always authenticate BEFORE parsing the request or looking up a
         // device; never fall back to Mac DevSpace OAuth on verification fail.
         try {
-          runtime.publicAuth.authenticate(bearerToken(req));
-        } catch {
-          rejectPublicMcpAuth(res, runtime);
+          await runtime.publicAuth.authorize(bearerToken(req));
+        } catch (error) {
+          if (error?.code === "revocation_state_stale" ||
+              error?.code === "revocation_store_unavailable") {
+            sendJson(res, 503, { error: "authorization_state_unavailable" });
+          } else {
+            rejectPublicMcpAuth(res, runtime);
+          }
           return;
         }
         // MCP streamable HTTP also supports GET/DELETE. Stream/session routing

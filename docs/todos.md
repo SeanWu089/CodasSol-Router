@@ -11,6 +11,15 @@
   refresh/client/revocation state to a standby **before** returning a
   successful write, and stops on missing replica, ambiguous ACK,
   lease loss or unsafe single-host migration. Loopback integration only.
+- [x] Add async live revocation verification from an atomic local
+  auth-state file (rather than a startup snapshot), with 503 fail-closed
+  state failures vs 401 invalid bearer, and explicit no-op signed
+  replica attestations to update trusted freshness. Tests verify
+  dynamic revocation without server restart.
+- [ ] Connect the live revocation reader and periodic attestation scheduler
+  to the actual provisioned ingress role under a validated fencing
+  authority. Budget both heartbeat and replica result requests under
+  ngrok Free; never refresh freshness merely by updating a local clock.
 - [x] Correct heartbeat quota math: 60s POST = 43,200/device/month, not
   720. Move SSE Agent positive POST heartbeat to 15 minutes
   (~2,880/device/month); 20-minute online TTL; keep legacy TTL at 30s.

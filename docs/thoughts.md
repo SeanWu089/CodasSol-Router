@@ -38,6 +38,32 @@
   plaintext to remain within SSE buffering safety limits; larger OAuth
   datasets require chunked/delta replication before scaling.
 
+### Live revocation verification (2026-10-12)
+
+- Corrected an important limitation of v0.3's original public JWT verifier:
+  a static startup-time revocation snapshot becomes stale after 5 minutes
+  and would then reject ALL otherwise-valid ChatGPT access tokens. An
+  optional `liveRevocationStateFile` reader now loads the latest locally
+  committed/replicated revocation namespace **on every MCP authorization
+  request**. It requires an authenticated recent replica acknowledgement
+  timestamp and bounded, well-formed records. The original synchronous
+  `authenticate` entrypoint refuses to use a stale static snapshot in
+  live mode; the Router instead awaits `authorize`.
+- A truly bad/expired/revoked bearer still returns HTTP **401**, while
+  missing, malformed, stale or unreadable revocation state now fails closed
+  with HTTP **503**, without a `WWW-Authenticate` challenge that might
+  incorrectly force a ChatGPT login loop. Tests cover live changes being
+  recognized without Router restart, explicit token revocation, loss of
+  state, and stale state.
+- The mirrored writer provides `attestUnchangedState()`, an explicit
+  authenticated **no-op checkpoint** that the standby durably confirms
+  even when no grants have changed. This is not scheduled automatically:
+  a future ingress service must budget a cadence, monitor acknowledgements,
+  and stop serving auth if fresh attestations cannot be obtained. The
+  verifier still defaults to 5 minutes of acceptable freshness; future
+  tests must select an explicit schedule/freshness policy without exceeding
+  ngrok's account-wide free request quota.
+
 ### ngrok request-budget correction (2026-10-12)
 
 - Earlier notes **incorrectly** treated a 60-second positive HTTP

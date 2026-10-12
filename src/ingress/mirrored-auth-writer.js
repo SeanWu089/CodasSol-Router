@@ -57,6 +57,17 @@ export class MirroredAuthWriter {
     };
   }
 
+  /**
+   * Refresh authorization-state liveness even when no grant has changed.
+   * Call through an explicitly configured service scheduler, never by
+   * blindly changing updatedAt on the standby. It performs a full fenced,
+   * durably acknowledged checkpoint and therefore consumes an SSE task
+   * result POST; it must be quota-budgeted.
+   */
+  async attestUnchangedState() {
+    return this.transact("revocations", () => ({ attested: true }));
+  }
+
   async transact(namespace, change) {
     if (!NAMESPACES.has(namespace) || typeof change !== "function") {
       throw new TypeError("Valid OAuth namespace and mutation required");

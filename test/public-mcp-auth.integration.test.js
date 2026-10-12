@@ -10,6 +10,8 @@ import { createRouterServer } from "../src/server.js";
 import {
   createPublicMcpAccess, loadPublicMcpAccessFromFile
 } from "../src/ingress/public-mcp-access.js";
+import { createLocalRevocationReader } from "../src/ingress/live-revocations.js";
+import { LocalRefreshAuthority } from "../src/ingress/local-refresh-authority.js";
 
 const issuer = "https://stable-codassol.example.test";
 const kid = "codassol-public-key:v1";
@@ -278,6 +280,130 @@ test("external public-auth provisioning loads pinned PEM only and refuses invali
     await writeFile(filename, JSON.stringify({ version: 1, issuer, keys: [] }));
     await assert.rejects(loadPublicMcpAccessFromFile(filename), /Incomplete/);
     await assert.rejects(loadPublicMcpAccessFromFile("./relative"), /absolute/);
+  } finally {
+    await rm(temp, { recursive: true, force: true });
+  }
+});
+
+test("fresh live revocation file updates authorization without restarting either Router", async () => {
+  const temp = await mkdtemp(path.join(os.tmpdir(), "codas-live-revocations-"));
+  const stateFile = path.join(temp, "mirrored-auth.json");
+  try {
+    const state = new LocalRefreshAuthority({ filePath: stateFile });
+    const token = mint();
+    const tokenId = JSON.parse(Buffer.from(token.split(".")[1],
+      "base64url").toString("utf8")).jti;
+    await state.transact((data) => {
+      data.namespaces = { revocations: { records: {} } };
+      data.lastReplicaAckAt = Date.now();
+    });
+    const auth = makeAccess({
+      revocationReader: createLocalRevocationReader({ filePath: stateFile })
+    });
+    const mac = auth;
+    const windows = makeAccess({
+      revocationReader: createLocalRevocationReader({ filePath: stateFile })
+    });
+    assert.equal((await mac.authorize(token)).subject, "user-001");
+    assert.equal((await windows.authorize(token)).subject, "user-001");
+    assert.throws(() => auth.authenticate(token), {
+      code: "revocation_store_unavailable"
+    });
+    await state.transact((data) => {
+      data.namespaces.revocations.records[tokenId] = {
+        revokedAt: Date.now()
+      };
+      data.lastReplicaAckAt = Date.now();
+    });
+    await assert.rejects(mac.authorize(token), { code: "invalid_token" });
+    await assert.rejects(windows.authorize(token), { code: "invalid_token" });
+    await state.transact((data) => {
+      data.lastReplicaAckAt = Date.now() - 6 * 60_000;
+    });
+    await assert.rejects(mac.authorize(mint()), {
+      code: "revocation_state_stale"
+    });
+  } finally {
+    await rm(temp, { recursive: true, force: true });
+  }
+});
+
+test("public MCP returns 503 for unavailable live revocations and 401 for invalid token", async () => {
+  const temp = await mkdtemp(path.join(os.tmpdir(), "codas-revocation-http-"));
+  const stateFile = path.join(temp, "revocations.json");
+  const backend = http.createServer((_req, res) => res.end("ok"));
+  const backendPort = await listen(backend);
+  let router;
+  try {
+    const store = new LocalRefreshAuthority({ filePath: stateFile });
+    await store.transact((data) => {
+      data.namespaces = { revocations: { records: {} } };
+      data.lastReplicaAckAt = Date.now();
+    });
+    const config = {
+      listenHost: "127.0.0.1", listenPort: 0,
+      backendHost: "127.0.0.1", backendPort,
+      backendTimeoutMs: 1000, stateDir: path.join(temp, "router"),
+      localDeviceId: "mac", localDeviceLabel: "Mac", localRoots: ["/tmp"]
+    };
+    const runtime = await createRouterRuntime(config, {
+      publicAuth: makeAccess({
+        revocationReader: createLocalRevocationReader({ filePath: stateFile })
+      })
+    });
+    let executed = 0;
+    runtime.peerOAuth.authorizedFetch = async () => {
+      ++executed;
+      return Response.json({ jsonrpc: "2.0", id: 1, result: { tools: [] } });
+    };
+    router = createRouterServer(config, runtime);
+    const base = `http://127.0.0.1:${await listen(router)}`;
+    const payload = { jsonrpc: "2.0", id: 1, method: "tools/list" };
+    assert.equal((await post(base, mint(), payload)).response.status, 200);
+    assert.equal(executed, 1);
+    const invalid = await post(base, "mac-devspace-not-public", payload);
+    assert.equal(invalid.response.status, 401);
+    assert.equal(executed, 1);
+    await store.transact((data) => {
+      data.lastReplicaAckAt = Date.now() - 10 * 60_000;
+    });
+    const unavailable = await post(base, mint(), payload);
+    assert.equal(unavailable.response.status, 503);
+    assert.equal(unavailable.data.error, "authorization_state_unavailable");
+    assert.equal(unavailable.response.headers.get("www-authenticate"), null,
+      "temporary state failure should not force a ChatGPT re-login");
+    assert.equal(executed, 1);
+  } finally {
+    if (router) {
+      router.closeAllConnections();
+      await new Promise((resolve) => router.close(resolve));
+    }
+    await new Promise((resolve) => backend.close(resolve));
+    await rm(temp, { recursive: true, force: true });
+  }
+});
+
+test("public auth config may require live revocation state without trusting boot-time snapshot", async () => {
+  const temp = await mkdtemp(path.join(os.tmpdir(), "codas-config-live-auth-"));
+  const filePath = path.join(temp, "auth.json");
+  const mirror = path.join(temp, "mirrored-state.json");
+  try {
+    const store = new LocalRefreshAuthority({ filePath: mirror });
+    await store.transact((data) => {
+      data.namespaces = { revocations: { records: {} } };
+      data.lastReplicaAckAt = Date.now();
+    });
+    await writeFile(filePath, JSON.stringify({
+      version: 1, issuer,
+      keys: [{ id: kid, publicKeyPem: pair.publicKey.export({
+        type: "spki", format: "pem"
+      }) }],
+      liveRevocationStateFile: mirror
+    }));
+    const verifier = await loadPublicMcpAccessFromFile(filePath);
+    await assert.doesNotReject(verifier.authorize(mint()));
+    assert.throws(() => verifier.authenticate(mint()),
+      { code: "revocation_store_unavailable" });
   } finally {
     await rm(temp, { recursive: true, force: true });
   }

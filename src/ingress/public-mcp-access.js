@@ -1,6 +1,7 @@
 import { createPublicKey, verify as verifySignature } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { createLocalRevocationReader } from "./live-revocations.js";
 
 const PUBLIC_SCOPE = "mcp:invoke";
 const B64 = /^[A-Za-z0-9_-]+$/;
@@ -35,7 +36,7 @@ function decodePart(value) {
 export function createPublicMcpAccess({
   issuer, trustedKeys, revokedJtis = new Set(),
   now = () => Date.now(), maxRevocationAgeMs = 5 * 60_000,
-  revocationsUpdatedAt = null
+  revocationsUpdatedAt = null, revocationReader = null
 } = {}) {
   const origin = normalizeIssuer(issuer);
   if (!(trustedKeys instanceof Map) || trustedKeys.size < 1 ||
@@ -52,16 +53,15 @@ export function createPublicMcpAccess({
     pinned.set(kid, key);
   }
   if (!Number.isSafeInteger(maxRevocationAgeMs) || maxRevocationAgeMs < 1000 ||
-      !Number.isFinite(revocationsUpdatedAt)) {
+      (revocationReader !== null && typeof revocationReader !== "function") ||
+      (!Number.isFinite(revocationsUpdatedAt) && !revocationReader)) {
     throw new TypeError("Fresh, authoritative revocation snapshot is required");
   }
-  const auth = {
-    issuer: origin,
-    resource: origin + "/mcp",
-    /** Fail closed when the installed revocation list is stale. */
-    authenticate(token) {
-      if (now() - revocationsUpdatedAt > maxRevocationAgeMs ||
-          revocationsUpdatedAt - now() > 10_000) {
+  const verifyAgainst = (token, snapshot) => {
+      if (!snapshot || !(snapshot.revokedJtis instanceof Set) ||
+          !Number.isSafeInteger(snapshot.updatedAt) ||
+          now() - snapshot.updatedAt > maxRevocationAgeMs ||
+          snapshot.updatedAt - now() > 10_000) {
         throw Object.assign(new Error("Public MCP revocation data is stale"), {
           code: "revocation_state_stale"
         });
@@ -87,7 +87,7 @@ export function createPublicMcpAccess({
           typeof body.scope !== "string" ||
           body.scope.length > 1024 ||
           !body.scope.split(" ").includes(PUBLIC_SCOPE) ||
-          revokedJtis.has(body.jti)) throw badToken();
+          snapshot.revokedJtis.has(body.jti)) throw badToken();
       const seconds = Math.floor(now() / 1000);
       if (body.iat > seconds + 5 || body.nbf > seconds + 5 ||
           body.exp <= seconds) throw badToken();
@@ -97,6 +97,40 @@ export function createPublicMcpAccess({
             Buffer.from(parts[0] + "." + parts[1]),
             pinned.get(head.kid), signature)) throw badToken();
       return { subject: body.sub, keyId: head.kid, tokenId: body.jti };
+  };
+  const auth = {
+    issuer: origin,
+    resource: origin + "/mcp",
+    /** Fail closed when the installed revocation list is stale. */
+    authenticate(token) {
+      // A dynamically configured store must not accidentally fall back to
+      // the initial static snapshot, which could miss recent revocations.
+      if (revocationReader !== null) {
+        throw Object.assign(new Error("Use async live authorization"), {
+          code: "revocation_store_unavailable"
+        });
+      }
+      return verifyAgainst(token, {
+        revokedJtis, updatedAt: revocationsUpdatedAt
+      });
+    },
+    async authorize(token) {
+      if (revocationReader === null) return auth.authenticate(token);
+      let fresh;
+      try {
+        const data = await revocationReader();
+        if (!Array.isArray(data?.revokedJtis) ||
+            data.revokedJtis.length > 50_000) throw new Error("Invalid revocations");
+        fresh = {
+          revokedJtis: new Set(data.revokedJtis),
+          updatedAt: data.updatedAt
+        };
+      } catch {
+        throw Object.assign(new Error("Live revocation source failed"), {
+          code: "revocation_store_unavailable"
+        });
+      }
+      return verifyAgainst(token, fresh);
     },
     metadata() {
       return {
@@ -127,14 +161,20 @@ export async function loadPublicMcpAccessFromFile(filePath) {
   }
   const data = JSON.parse(await readFile(filePath, "utf8"));
   if (!data || data.version !== 1 || !Array.isArray(data.keys) ||
-      !Array.isArray(data.revokedJtis) || !Number.isFinite(data.revocationsUpdatedAt)) {
+      (data.revokedJtis != null && !Array.isArray(data.revokedJtis)) ||
+      (!data.liveRevocationStateFile &&
+       (!Array.isArray(data.revokedJtis) ||
+        !Number.isFinite(data.revocationsUpdatedAt)))) {
     throw new Error("Incomplete public MCP auth provisioning");
   }
   return createPublicMcpAccess({
     issuer: data.issuer,
     trustedKeys: new Map(data.keys.map((entry) => [entry.id, entry.publicKeyPem])),
-    revokedJtis: new Set(data.revokedJtis),
+    revokedJtis: new Set(data.revokedJtis || []),
     revocationsUpdatedAt: data.revocationsUpdatedAt,
+    revocationReader: data.liveRevocationStateFile
+      ? createLocalRevocationReader({ filePath: data.liveRevocationStateFile })
+      : null,
     maxRevocationAgeMs: data.maxRevocationAgeMs ?? 5 * 60_000
   });
 }

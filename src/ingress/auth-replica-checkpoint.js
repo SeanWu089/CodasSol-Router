@@ -217,6 +217,7 @@ export class AuthReplicaStore {
         digest: opened.digest, expiresAt: opened.expiresAt
       };
       data.namespaces = opened.state.namespaces;
+      data.lastReplicaAckAt = Date.now();
       return structuredClone(data.checkpoint);
     });
   }
