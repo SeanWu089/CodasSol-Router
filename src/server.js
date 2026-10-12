@@ -579,7 +579,7 @@ async function handleAgentRoute(req, res, runtime) {
 }
 
 export function createRouterServer(config = loadConfig(), runtime = null) {
-  if (config.requirePublicIngressFence &&
+  if ((config.requirePublicIngressFence || config.publicIngressFenceFile) &&
       (!runtime?.publicAuth ||
        typeof runtime?.publicIngressRequestGuard?.authorizeRequest !== "function")) {
     throw new TypeError("Configured public ingress fencing requires public OAuth and a live request guard");

@@ -10,6 +10,7 @@ import { PeerMesh } from "./peer-mesh.js";
 import { createRouterPeerOAuth } from "./router-peer-oauth.js";
 import { createIngressOwnerProof } from "./ingress/public-owner-proof.js";
 import { loadPublicMcpAccessFromFile } from "./ingress/public-mcp-access.js";
+import { loadPublicRequestFenceFromFile } from "./ingress/public-request-fence-provisioning.js";
 
 export async function createRouterRuntime(config, {
   clock = () => Date.now(),
@@ -76,6 +77,16 @@ export async function createRouterRuntime(config, {
   // back to DevSpace tokens when public auth mode was requested.
   runtime.publicAuth = publicAuth || (config.publicAuthFile
     ? await loadPublicMcpAccessFromFile(config.publicAuthFile) : null);
+  if (config.publicIngressFenceFile) {
+    if (!runtime.publicAuth) {
+      throw new TypeError("External ingress fence requires provisioned public OAuth");
+    }
+    runtime.publicIngressRequestGuard = await loadPublicRequestFenceFromFile({
+      filePath: config.publicIngressFenceFile,
+      installationId: privateState.installationId,
+      publicIssuer: runtime.publicAuth.issuer
+    });
+  }
   runtime.peerMesh = await PeerMesh.load(runtime, config);
   for (const peer of runtime.peerMesh.peers.values()) {
     await catalog.observe({

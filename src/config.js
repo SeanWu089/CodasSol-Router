@@ -32,6 +32,9 @@ export function loadConfig(env = process.env) {
     // Experimental; disabled unless an externally provisioned public
     // verifier and current revocation snapshot are explicitly provided.
     publicAuthFile: env.CODASSOL_PUBLIC_AUTH_FILE || null,
+    // Experimental separate PRIVATE configuration file; no secrets in env,
+    // Git or shell arguments. A supplied file implies mandatory fencing.
+    publicIngressFenceFile: env.CODASSOL_PUBLIC_INGRESS_FENCE_FILE || null,
     // Explicit staging safety switch: fail startup rather than accidentally
     // serving public OAuth without a provisioned external request fence.
     // The current Mac production Router does NOT set this flag.
