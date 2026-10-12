@@ -9,6 +9,7 @@
 - [x] Verify the script parses on Windows and defaults to stopping no process; physically test recovery of the owned DevSpace process while preserving Router process/identity, then reverify real workspace execution and the original connector workspace.
 - [x] Audit stale process-session handles across backend restart: source counter reset and same-workspace native session 5 reuse were physically reproduced.
 - [ ] Priority: add generation-aware process handles/invalidation so pre-restart write_stdin cannot attach to another command; require a stale-handle regression before a stable reliability release. Persistent workspace ownership is a separate contract.
+  - Windows source candidate now reserves durable disjoint numeric session ranges through a Node preload adapter without modifying dependency files. Unit restart/ownership, multi-process contention, missing/corrupt ledger and exhaustion checks pass. Physical deployment and stale-handle rejection against the published Windows backend remain pending after the tailnet connection failed; inspect possible Desktop staging files before retrying.
 
 ## 2026-10-12 — Network recovery and diagnostics
 

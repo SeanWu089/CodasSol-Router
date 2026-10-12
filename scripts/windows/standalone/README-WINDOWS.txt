@@ -60,6 +60,13 @@ OPTIONAL BACKEND RECOVERY ACCEPTANCE
   DevSpace counters can restart at 1; generation-aware handles remain pending.
 
 RELIABILITY AND SECURITY
+  Windows supervised sessions reserve a distinct integer range at each launch.
+  The private .codassol-node-v02/session-generation.json ledger and initialized
+  marker must not be deleted or rolled back independently. An abandoned
+  session-generation.lock, lost/corrupt ledger, or exhausted range stops new
+  allocation until reviewed; never reset the ledger to recover service.
+  This adapter preserves the published dependency files. Its upstream session
+  allocation contract must be physically reverified when upgrading DevSpace.
   This package does NOT bypass enterprise antivirus or application policy.
   If DevSpace dist/cli.js disappears or Windows blocks script execution,
   stop: do not turn off or evade the hospital's security controls.

@@ -27,7 +27,7 @@ while ($true) {
         $preference = $ErrorActionPreference
         $ErrorActionPreference = 'Continue'
         try {
-            & $node $cli serve 2>&1 |
+            & $node --import (Join-Path $root 'runtime\devspace-session-preload.mjs') $cli serve 2>&1 |
                 Out-File -LiteralPath (Join-Path $logDir 'devspace.log') -Append -Encoding utf8 -ErrorAction Stop
             $backendExit = $LASTEXITCODE
         } finally {

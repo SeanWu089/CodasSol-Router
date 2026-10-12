@@ -35,7 +35,8 @@ $arch = if ($env:PROCESSOR_ARCHITEW6432) { $env:PROCESSOR_ARCHITEW6432 } else { 
 if ($arch -ne 'AMD64') { throw "This build requires Windows x64; detected $arch." }
 foreach ($component in @('node\node.exe', 'node\npm.cmd', 'app\server.js',
                        'runtime\start-devspace.ps1', 'runtime\start-router.ps1',
-                       'runtime\configure-devspace-root.mjs')) {
+                       'runtime\configure-devspace-root.mjs',
+                       'runtime\session-generations.mjs', 'runtime\devspace-session-preload.mjs')) {
     if (-not (Test-Path -LiteralPath (Join-Path $payload $component))) {
         throw "Archive is incomplete: payload\$component"
     }
