@@ -12,6 +12,7 @@ import {
 import { createRouterRuntime } from "./runtime.js";
 import { addRouterTools, deviceSnapshot } from "./mcp-device-tools.js";
 import { INGRESS_OWNER_PROOF_ROUTE } from "./ingress/public-owner-proof.js";
+import { AGENT_SSE_PRESENCE_TTL_MS } from "./agent-timing.js";
 import { handlePublicOAuthTokenRequest } from "./ingress/public-oauth-http.js";
 import {
   authorizationServerMetadata, handlePublicOAuthConsent
@@ -505,7 +506,7 @@ async function handleAgentRoute(req, res, runtime) {
       sendJson(res, 409, { error: error.code || "agent_consumer_active" });
       return true;
     }
-    ensureRegisteredDevice(runtime, identity, { heartbeatTtlMs: 90_000 });
+    ensureRegisteredDevice(runtime, identity, { heartbeatTtlMs: AGENT_SSE_PRESENCE_TTL_MS });
     res.writeHead(200, {
       "content-type": "text/event-stream; charset=utf-8",
       "cache-control": "no-cache, no-transform",
@@ -533,7 +534,7 @@ async function handleAgentRoute(req, res, runtime) {
       // Drop back to the legacy timeout only when a stream really closes;
       // a GET request finishing by itself is not an SSE disconnection.
       const device = runtime.devices.get(identity.id);
-      if (device?.heartbeatTtlMs === 90_000) {
+      if (device?.heartbeatTtlMs === AGENT_SSE_PRESENCE_TTL_MS) {
         runtime.devices.setHeartbeatTtl(identity.id, 30_000);
       }
     };

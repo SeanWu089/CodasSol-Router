@@ -2,6 +2,27 @@
 
 ## v0.3: public OAuth continuity (in progress, 2026-10-12)
 
+- [x] Prototype encrypted, signed, per-recipient auth state replication:
+  pinned source/target identities, source signature, AES-GCM confidentiality,
+  monotonic revision/digest chain, rollback/gap/epoch rejection and
+  durable follower acknowledgement over authenticated SSE Agent jobs.
+- [x] Implement an opt-in mirrored OAuth transaction wrapper that requires
+  an externally verified writer lease, syncs the complete proposed
+  refresh/client/revocation state to a standby **before** returning a
+  successful write, and stops on missing replica, ambiguous ACK,
+  lease loss or unsafe single-host migration. Loopback integration only.
+- [x] Correct heartbeat quota math: 60s POST = 43,200/device/month, not
+  720. Move SSE Agent positive POST heartbeat to 15 minutes
+  (~2,880/device/month); 20-minute online TTL; keep legacy TTL at 30s.
+- [ ] Supply a genuine ngrok/provider-backed fencing and latest-commit
+  authority; verify split-brain, simultaneous restart, uncertain writes and
+  standby promotion with physical Mac/Windows devices. Mirroring alone
+  cannot establish an authoritative latest committed checkpoint.
+- [ ] Provision pinned signing and per-device decryption keys outside Git,
+  wire mirrored refresh/client/revocation authorities into opt-in runtime,
+  provide safe migration and revocation freshness, and support
+  checkpoint chunking or deltas for >128 KiB auth state.
+
 - [x] Implement short-lived, one-time local owner approval codes separate
   from Router admin and pairing tokens, plus an opt-in browser consent
   page restricted to pre-registered callback URIs and exact PKCE/resource.

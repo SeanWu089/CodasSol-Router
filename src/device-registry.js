@@ -44,8 +44,8 @@ function sanitizeDevice(input, now) {
   // Agents. A scoped TTL avoids globally delaying legacy offline detection.
   const heartbeatTtlMs = input.heartbeatTtlMs;
   if (heartbeatTtlMs != null && (!Number.isInteger(heartbeatTtlMs) ||
-      heartbeatTtlMs < 1_000 || heartbeatTtlMs > 300_000)) {
-    throw new TypeError("device.heartbeatTtlMs must be 1-300 seconds");
+      heartbeatTtlMs < 1_000 || heartbeatTtlMs > 3_600_000)) {
+    throw new TypeError("device.heartbeatTtlMs must be 1-3600 seconds");
   }
   return {
     id,
@@ -111,8 +111,8 @@ export class DeviceRegistry {
     const existing = this.#devices.get(deviceId);
     if (!existing) return null;
     if (!Number.isInteger(heartbeatTtlMs) ||
-        heartbeatTtlMs < 1_000 || heartbeatTtlMs > 300_000) {
-      throw new TypeError("heartbeatTtlMs must be 1-300 seconds");
+        heartbeatTtlMs < 1_000 || heartbeatTtlMs > 3_600_000) {
+      throw new TypeError("heartbeatTtlMs must be 1-3600 seconds");
     }
     // Changing timeout policy is not evidence the Agent was recently alive.
     existing.heartbeatTtlMs = heartbeatTtlMs;

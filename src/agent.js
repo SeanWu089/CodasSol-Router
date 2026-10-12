@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url";
 import { AgentConfigStore } from "./agent-config.js";
 import { DevSpaceLocalOAuth } from "./devspace-local-auth.js";
 import { consumeAgentEvents, reconnectDelayMs, SseUnavailableError } from "./agent-sse.js";
+import { AGENT_SSE_HEARTBEAT_INTERVAL_MS } from "./agent-timing.js";
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -164,6 +165,7 @@ export function isExpiredAgentJob(job, now = Date.now()) {
 export async function runAgent({
   configStore = new AgentConfigStore(),
   stopSignal = () => false,
+  replicaReceiver = null,
   transport = process.env.CODASSOL_AGENT_TRANSPORT === "poll" ? "poll" : "sse"
 } = {}) {
   const config = await configStore.load();
@@ -184,7 +186,20 @@ export async function runAgent({
     }
     let body;
     try {
-      const result = await executeHttpJob(configStore, config, job.payload);
+      const result = job.payload?.type === "auth-replica-checkpoint"
+        ? await (async () => {
+            if (!replicaReceiver ||
+                typeof replicaReceiver.receive !== "function") {
+              throw Object.assign(new Error("Replica receiver not configured"), {
+                code: "AUTH_REPLICA_DISABLED"
+              });
+            }
+            // Auth replica jobs are not MCP commands: they NEVER invoke the
+            // local DevSpace backend and can only write via the pinned
+            // checkpoint signature/recipient verifier.
+            return replicaReceiver.receive(job.payload.checkpoint);
+          })()
+        : await executeHttpJob(configStore, config, job.payload);
       body = { jobId: job.id, ok: true, result };
     } catch (error) {
       body = {
@@ -203,6 +218,10 @@ export async function runAgent({
   const logError = (error) => process.stderr.write(
     `CodasSol Agent connection error: ${error instanceof Error ? error.message : String(error)}\n`
   );
+  // 60-second HTTP heartbeats would cost 43,200 requests per 30-day month
+  // PER device. Keep one-way SSE framing cheap and positively confirm
+  // Agent liveness at a quota-friendly interval instead.
+  const positiveHeartbeatIntervalMs = AGENT_SSE_HEARTBEAT_INTERVAL_MS;
   let heartbeatAt = 0;
   let sseFailures = 0;
   let sseUnavailable = transport === "poll";
@@ -211,9 +230,8 @@ export async function runAgent({
     try {
       if (Date.now() >= heartbeatAt) {
         await heartbeat();
-        // Positive agent liveness: ~720 requests / 30 days per node,
-        // instead of ~259,200 at ten-second intervals.
-        heartbeatAt = Date.now() + 60_000;
+        // ~2,880 authenticated heartbeat POSTs per 30 days per online node.
+        heartbeatAt = Date.now() + positiveHeartbeatIntervalMs;
       }
 
       if (!sseUnavailable) {
@@ -222,10 +240,19 @@ export async function runAgent({
           if (stopSignal()) controller.abort();
         }, 1_000);
         stopTimer.unref?.();
-        const heartbeatTimer = setInterval(() => {
-          if (Date.now() < heartbeatAt) return;
-          heartbeatAt = Date.now() + 60_000;
-          heartbeat().catch(logError);
+        let heartbeatInFlight = false;
+        const heartbeatTimer = setInterval(async () => {
+          if (heartbeatInFlight || Date.now() < heartbeatAt) return;
+          heartbeatInFlight = true;
+          try {
+            await heartbeat();
+            heartbeatAt = Date.now() + positiveHeartbeatIntervalMs;
+          } catch (error) {
+            heartbeatAt = Date.now() + 60_000;
+            logError(error);
+          } finally {
+            heartbeatInFlight = false;
+          }
         }, 5_000);
         heartbeatTimer.unref?.();
         const connectedAt = Date.now();

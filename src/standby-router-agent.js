@@ -80,7 +80,7 @@ export async function runStandbyRouterAgent({
   allowLoopbackHttp = false, stopSignal = () => false,
   isIngressOwner = () => false,
   ownerProbe = verifyPublicIngressOwner,
-  agentRunner = runAgent
+  agentRunner = runAgent, replicaReceiver = null
 } = {}) {
   const origin = normalizedOrigin(ingressUrl, { allowLoopbackHttp });
   const config = await configStore.load();
@@ -95,7 +95,7 @@ export async function runStandbyRouterAgent({
     }
   }
   return agentRunner({
-    configStore,
+    configStore, replicaReceiver,
     transport: "sse",
     stopSignal: () => stopSignal() || isIngressOwner()
   });

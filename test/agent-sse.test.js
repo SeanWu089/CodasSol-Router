@@ -7,9 +7,26 @@ import test from "node:test";
 import { isExpiredAgentJob, runAgent } from "../src/agent.js";
 import { AgentHub } from "../src/agent-hub.js";
 import { DeviceRegistry } from "../src/device-registry.js";
+import {
+  AGENT_SSE_HEARTBEAT_INTERVAL_MS, AGENT_SSE_PRESENCE_TTL_MS,
+  estimatedIdleHeartbeatRequests
+} from "../src/agent-timing.js";
 import { consumeAgentEvents, reconnectDelayMs, SseUnavailableError } from "../src/agent-sse.js";
 import { createRouterRuntime } from "../src/runtime.js";
 import { createRouterServer } from "../src/server.js";
+
+test("SSE heartbeat accounting fits free-tier headroom unlike 60-second POSTs", () => {
+  assert.equal(AGENT_SSE_HEARTBEAT_INTERVAL_MS, 15 * 60_000);
+  assert.ok(AGENT_SSE_PRESENCE_TTL_MS >
+    AGENT_SSE_HEARTBEAT_INTERVAL_MS);
+  assert.equal(estimatedIdleHeartbeatRequests({ devices: 1 }), 2_880);
+  assert.equal(estimatedIdleHeartbeatRequests({ devices: 4 }), 11_520);
+  assert.equal(estimatedIdleHeartbeatRequests({
+    devices: 1, heartbeatIntervalMs: 60_000
+  }), 43_200);
+  assert.ok(estimatedIdleHeartbeatRequests({ devices: 4 }) < 20_000,
+    "only idle positive heartbeats are budgeted; MCP and result requests count too");
+});
 
 async function listen(server) {
   await new Promise((resolve, reject) => {
@@ -192,15 +209,15 @@ test("AgentHub shutdown closes only the live SSE consumers", async () => {
   unsubscribe();
 });
 
-test("SSE 60-second heartbeat remains online without extending legacy Agent TTL", () => {
+test("SSE 15-minute heartbeat remains online without extending legacy Agent TTL", () => {
   let clock = 0;
   const devices = new DeviceRegistry({ clock: () => clock, heartbeatTtlMs: 30_000 });
   devices.register({
     id: "sse", platform: "win32", roots: ["C:\\Projects"],
-    heartbeatTtlMs: 90_000
+    heartbeatTtlMs: AGENT_SSE_PRESENCE_TTL_MS
   });
   devices.register({ id: "legacy", platform: "win32", roots: ["C:\\Projects"] });
-  clock = 45_000;
+  clock = 16 * 60_000;
   assert.equal(devices.get("sse").online, true, "SSE must not show false offline");
   assert.equal(devices.get("legacy").online, false, "legacy timeout stays at 30s");
   const lastSeen = devices.get("sse").lastSeenAt;
@@ -208,7 +225,7 @@ test("SSE 60-second heartbeat remains online without extending legacy Agent TTL"
   assert.equal(devices.get("sse").lastSeenAt, lastSeen,
     "closing SSE must not fake a heartbeat");
   assert.equal(devices.get("sse").online, false);
-  assert.throws(() => devices.setHeartbeatTtl("sse", 500_000), /1-300 seconds/);
+  assert.throws(() => devices.setHeartbeatTtl("sse", 4_000_000), /1-3600 seconds/);
 });
 
 test("Router SSE authenticates Agent, delivers scoped jobs, accepts result POST and releases subscriber", async () => {
@@ -256,7 +273,7 @@ test("Router SSE authenticates Agent, delivers scoped jobs, accepts result POST 
     });
     await ready;
     assert.equal(runtime.devices.get("windows").online, true);
-    assert.equal(runtime.devices.get("windows").heartbeatTtlMs, 90_000);
+    assert.equal(runtime.devices.get("windows").heartbeatTtlMs, AGENT_SSE_PRESENCE_TTL_MS);
     const duplicate = await fetch(`${base}/events`, {
       headers: { authorization: `Bearer ${token}` }
     });

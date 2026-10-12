@@ -2,6 +2,61 @@
 
 ## v0.3 transport decision — lightweight Single Ingress (2026-10-10)
 
+### Synchronous encrypted OAuth state mirroring — isolated prototype (2026-10-12)
+
+- Added `auth-replica-checkpoint.js`: a **per-recipient encrypted** X25519
+  ephemeral key exchange + HKDF + AES-256-GCM snapshot, Ed25519 source
+  signature, pinned issuer/source/target installation IDs and epoch, bounded
+  expiry, monotonic revision and chained digest. Only the designated
+  standby's private key can decrypt the signed snapshot. Durable passive
+  import rejects replay, rollback, sequence gaps and unexpected epoch
+  resets. On-disk replica content is sensitive and must remain under
+  restricted local state-directory permissions.
+- Integrated a distinct `auth-replica-checkpoint` task into the **existing
+  authenticated Agent SSE / HTTP result channel**. The standby only
+  accepts it when explicitly configured with a pinned signature verifier,
+  recipient decryption key, installation identity and durable replica
+  store. It never forwards the task to local DevSpace. The source checks
+  revision+digest in the acknowledgement; an uncertain ACK is **never
+  automatically retried**. Mac loopback SSE → simulated Windows durable
+  receipt, with wrong-signature/replay rejection, passed integration tests.
+- Added `MirroredAuthWriter` for refresh grants, registered clients and
+  revocations. Under one single-host atomic source transaction and an
+  injected external fencing check it generates a complete proposed snapshot,
+  sends it through the device-bound Agent channel, waits for the standby's
+  durable ACK, rechecks fencing, and only then commits the source state
+  and returns the grant. Standby offline, ambiguous ACK and lost fencing
+  cause **fail-closed** issuance. The source may need manual reconciliation
+  if standby persisted a proposal before the source could commit it.
+  Existing nonempty single-host grant state cannot silently be overwritten.
+- This is **not distributed consensus** and is not yet wired into live
+  OAuth runtime startup. A real lease provider, reliable bootstrap from
+  existing authorization state, explicit role-change/follower promotion,
+  authoritative latest-commit recovery, runtime revocation freshness,
+  persistent per-installation key provisioning, and physical Windows/ngrok
+  tests are still required. The current checkpoint is capped to ~128 KiB
+  plaintext to remain within SSE buffering safety limits; larger OAuth
+  datasets require chunked/delta replication before scaling.
+
+### ngrok request-budget correction (2026-10-12)
+
+- Earlier notes **incorrectly** treated a 60-second positive HTTP
+  heartbeat as only 720 requests/30 days. Correct arithmetic is
+  **43,200 requests/device/30-day month**, which by itself exceeds
+  ngrok Free's quoted 20,000-request account allowance.
+- For SSE Agents, the new shared timing constants use an authenticated
+  positive HTTP heartbeat **every 15 minutes**: ~2,880 requests/device
+  per 30 days (11,520 for four nodes), *before* SSE handshakes,
+  reconnects, job results, MCP requests, downloads and other services.
+  SSE downstream comments do not count as additional requests. Device
+  presence TTL is now 20 minutes to match; legacy 30-second Agent presence
+  detection stays unchanged. Disconnected SSE sockets restore the legacy
+  TTL without fabricating a heartbeat. This tradeoff lengthens detection
+  of half-open connections; realistic network/idle-timeout testing remains.
+- The previous 60-second/90-second design checkpoints below describe
+  superseded behavior. Code and quota assertions now use shared constants
+  to prevent another inadvertent drift.
+
 ### Opt-in dynamic OAuth client registration (2026-10-12)
 
 - Added constrained RFC7591 public client registration at `POST /register`
