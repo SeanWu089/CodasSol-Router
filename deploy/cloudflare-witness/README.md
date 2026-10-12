@@ -55,12 +55,15 @@ separate.
   needs separate real-world verification.
 - A witness lease is permanently pinned to one `publicDomain`, and
   requests for a different public origin are rejected.
-- An authenticated leader may publish a monotonically increasing
-  checkpoint digest. It is responsible for publishing **only after the
-  two-phase signed replica commit has completed**. This branch does not
-  yet wire that publication to `MirroredAuthWriter`. Promotion MUST
-  remain disabled until the latest-commit publication/recovery protocol
-  is correctly integrated.
+- The opt-in `MirroredAuthWriter.commitPublisher` callback and
+  `createWitnessCommitPublisher()` adapter now provide the **post-commit
+  witness publication hook**. It runs only AFTER the standby has verified
+  its signed COMMITTED certificate and BEFORE OAuth issuance succeeds.
+  Set `requireExternalCommit: true` when constructing a test writer, and
+  inject a current lease claim using `getClaim`. An unavailable or
+  ambiguous witness confirmation fails closed, with no automatic retry.
+  The full provisioned runtime, recovery logic, and production activation
+  still are NOT wired, so promotion MUST remain disabled.
 - No automatic lease takeover can be claimed safe while the old ngrok
   Agent may still be answering requests. Do not enable the existing
   `IngressSupervisor` in production.
@@ -82,7 +85,9 @@ client in `src/ingress/cloudflare-witness-authority.js`, and Node tests in
 `deploy/cloudflare-witness/worker.js`.
 
 Run `node --test test/cloudflare-witness.test.js` and `npm test` in a
-checked-out worktree once remote Mac access is restored. Then run
+checked-out worktree once remote Mac access is restored. An isolated
+GitHub Actions workflow is present, but a passing workflow result has not
+been confirmed. Then run
 `wrangler dev` or an isolated Workers deployment test; the Cloudflare
 runtime and physical dual-host cutover have **not** been validated yet.
 
