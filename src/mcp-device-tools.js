@@ -1,4 +1,5 @@
 /** Router-local MCP metadata and discovery. Never includes credentials or peer URLs. */
+import { peerConnectivity } from "./peer-diagnostics.js";
 const DEVICE_TOOL = {
   name: "codassol_list_devices",
   description: "Discover the user's registered CodasSol devices and their current routing readiness. Use this before choosing a computer when the user has not specified one; ask the user when more than one candidate fits. Device presence alone does not guarantee command execution.",
@@ -36,7 +37,7 @@ export function deviceSnapshot(runtime, localBackendReachable) {
     const peer = runtime.peerMesh?.peers.has(entry.id);
     const peerHealth = peer ? runtime.peerMesh.peerHealth.get(entry.id) : null;
     const backendReachable = local ? localBackendReachable
-      : peer ? peerHealth?.backendReachable === true : null;
+      : peer ? (peerHealth?.reachable ? peerHealth.backendReachable === true : null) : null;
     const status = local ? (localBackendReachable ? "online" : "degraded")
       : peer && peerHealth?.reachable && !peerHealth.backendReachable ? "degraded"
         : routing?.online ? "online" : routing || peer || entry.kind === "agent" ? "offline" : "unknown";
@@ -48,6 +49,7 @@ export function deviceSnapshot(runtime, localBackendReachable) {
       isThisDevice: local,
       status,
       backendReachable,
+      connectivity: peer ? peerConnectivity(peerHealth) : null,
       authorizedRoots: routing?.roots || [],
       // Agent heartbeat does not validate DevSpace's command backend.
       // Real open_workspace + follow-up command verification is separate from

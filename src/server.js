@@ -11,6 +11,7 @@ import {
 } from "./mcp-routing.js";
 import { createRouterRuntime } from "./runtime.js";
 import { addRouterTools, deviceSnapshot } from "./mcp-device-tools.js";
+import { peerConnectivity } from "./peer-diagnostics.js";
 
 const HOP_BY_HOP = new Set([
   "connection",
@@ -313,6 +314,7 @@ async function handleDeviceRoute(req, res, config, runtime) {
         // A health probe is not equivalent to open_workspace + command execution.
         // No current Registry writer supplies a fresh end-to-end proof.
         executionVerified: null,
+        connectivity: peer ? peerConnectivity(health) : null,
         lastSeenAt: local ? Date.now() : peer ? (health?.lastOnlineAt ?? null)
           : routing?.lastSeenAt ?? null,
         revision: entry.rename?.revision ?? null

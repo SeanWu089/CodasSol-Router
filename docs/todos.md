@@ -1,5 +1,13 @@
 # Todos
 
+## 2026-10-12 — Network recovery and diagnostics
+
+- [x] Collect Windows health/tasks/boot and Mac tailnet evidence around the user-reported disconnect/reconnect; do not infer a sleeping PC or backend crash from remote timeouts.
+- [x] Add credential-redacting peer failure categories, probe timing/failure counts and consistent unknown backend state to authenticated HTTP/MCP discovery; exercise error→recovery and privacy regression tests.
+- [x] Deploy the Mac diagnostic API and previously staged Agent backend tri-state correction with rollback, preserving DevSpace and ngrok processes.
+- [x] Confirm Windows diagnostic deployment and record eight healthy samples over ~70 seconds after network recovery (2026-10-12); reverify Windows→Mac execution.
+- [x] Capture final Mac→Windows workspace-bound hostname execution after diagnostic deployment, with exit 0. Both physical directions recovered after the user-reported network reconnection; physical reboot and independently hosted public ChatGPT ingress remain separate requirements.
+
 ## 2026-10-12 — SSH recovery checkpoint
 
 - [x] Restore physical Windows standalone services through their existing scheduled tasks and reverify Router health plus local MCP workspace-bound hostname execution.
@@ -7,7 +15,8 @@
 - [x] Deploy the Windows Router supervisor-only update and verify recovery after a scoped process crash, preserving DevSpace PID and device identity (2026-10-12).
 - [x] Deploy backed-up Mac peer transport/config and verify actual Mac→Windows workspace-bound execution after two automatic rollbacks (2026-10-12).
 - [x] Verify reverse Windows→Mac workspace-bound execution with exit 0 (2026-10-12), after an initial DEVICE_OFFLINE during peer recovery.
-- [ ] Repeat both physical directions after network/reboot recovery; current successful two-way calls do not prove sustained availability.
+- [x] Repeat both physical directions after the user-reported network reconnect (2026-10-12).
+- [ ] Verify both physical directions after reboot and over a longer operating window; bounded two-way calls do not prove sustained availability.
 
 - [x] Confirm Windows Tailscale Serve activation for Router 17678 and authenticated HTTPS installation identity (2026-10-12).
 - [ ] Stabilize and test already configured bidirectional peers; confirm the Mac Device Registry shows the independent Windows Router online separately from the old Agent. Preserve original state and rollback on failed readiness checks.
@@ -66,4 +75,4 @@
 - [ ] Confirm refreshed ChatGPT connector tool metadata: public MCP offers `codassol_list_devices` and optional `device_id`, while the current session's callable tool schema still lists the original six DevSpace tools. Do not claim automatic device discovery is available to every current ChatGPT session until refreshed.
 - [ ] Verify physical Windows legacy Agent `open_workspace` and `exec_command` via Mac Router. Existing `SEANSWPC` workspace-bound remote exec still returned an internal connector error despite online heartbeat; do not re-enroll, delete bindings or infer backend readiness from presence.
 - [x] Fix misleading Mac menu bar status on `fix/mac-device-execution-status-v0.2`: distinguish Agent heartbeat from execution verification, show unknown Agent backend as unverified, add legacy API and state-label regression tests; build and install Mac GUI v0.3.2 with guarded rollback while preserving Router/DevSpace/ngrok processes.
-- [ ] Deploy the Router `/_codassol/devices` API tri-state `backendReachable` fix in an approved Router maintenance window; current production API still reports heartbeat as backend reachability, but Mac v0.3.2 renders Agents defensively without implying execution works.
+- [x] Deploy the Router `/_codassol/devices` API tri-state `backendReachable` fix during the user-authorized diagnostic maintenance (2026-10-12), preserving DevSpace/ngrok. Legacy Agent backend health is now unknown in the production Mac API; execution verification stays separate.

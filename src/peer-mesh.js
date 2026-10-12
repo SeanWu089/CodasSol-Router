@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { isIP } from "node:net";
 import { createPinnedPeerFetch } from "./peer-transport.js";
+import { peerFailureCode } from "./peer-diagnostics.js";
 import { RoutingDecisionError } from "./routing-policy.js";
 
 const PROTOCOL = 2;
@@ -67,7 +68,7 @@ async function peerRequest(peer, endpoint, {
       signal: controller.signal
     });
     if (!response.ok) {
-      throw new Error(`Peer ${peer.id} responded HTTP ${response.status}`);
+      throw Object.assign(new Error(`Peer ${peer.id} responded HTTP ${response.status}`), { statusCode: response.status });
     }
     return await response.json();
   } finally {
@@ -123,6 +124,8 @@ export class PeerMesh {
   async refresh() {
     if (this.refreshPending) return this.refreshPending;
     const pending = Promise.all([...this.peers.values()].map(async (peer) => {
+      const started = performance.now();
+      let phase = "transport";
       try {
         const info = await peerRequest(peer, "/_codassol/peer/info", {
           // Tailnet TLS handshakes can take longer than the 2.5s used for
@@ -131,13 +134,19 @@ export class PeerMesh {
           // A genuinely unreachable node still fails closed after 8s.
           fetchFn: this.fetchFn, timeoutMs: 8000
         });
-        if (info.protocol !== PROTOCOL || info.id !== peer.id ||
-            !Array.isArray(info.roots) || typeof info.platform !== "string") {
-          throw new Error(`Peer identity or protocol mismatch for ${peer.id}`);
+        if (!info || typeof info !== "object" || !Array.isArray(info.roots) || typeof info.platform !== "string") {
+          throw Object.assign(new Error("Invalid peer metadata"), { code: "INVALID_RESPONSE" });
+        }
+        if (info.protocol !== PROTOCOL) {
+          throw Object.assign(new Error("Peer protocol mismatch"), { code: "PROTOCOL_MISMATCH" });
+        }
+        if (info.id !== peer.id) {
+          throw Object.assign(new Error("Peer identity mismatch"), { code: "IDENTITY_MISMATCH" });
         }
         if (peer.installationId && peer.installationId !== info.installationId) {
-          throw new Error(`Peer installation identity mismatch for ${peer.id}`);
+          throw Object.assign(new Error("Peer installation identity mismatch"), { code: "IDENTITY_MISMATCH" });
         }
+        phase = "catalog";
         await this.runtime.catalog.observe({
           id: peer.id, defaultName: info.label || peer.id,
           platform: info.platform, kind: "router",
@@ -147,7 +156,10 @@ export class PeerMesh {
           reachable: true,
           backendReachable: info.backendReachable === true,
           lastOnlineAt: Date.now(),
-          checkedAt: Date.now()
+          checkedAt: Date.now(),
+          durationMs: Math.round(performance.now() - started),
+          consecutiveFailures: 0,
+          failureCode: null
         });
         this.runtime.devices.register({
           id: peer.id, platform: info.platform,
@@ -172,12 +184,15 @@ export class PeerMesh {
             });
           } catch { /* retry next probe; routing remains available */ }
         }
-      } catch {
+      } catch (error) {
         const previousHealth = this.peerHealth.get(peer.id);
         this.peerHealth.set(peer.id, {
           reachable: false, backendReachable: false,
           lastOnlineAt: previousHealth?.lastOnlineAt ?? null,
-          checkedAt: Date.now()
+          checkedAt: Date.now(),
+          durationMs: Math.round(performance.now() - started),
+          consecutiveFailures: (previousHealth?.consecutiveFailures || 0) + 1,
+          failureCode: peerFailureCode(error, phase)
         });
         const previous = this.runtime.devices.get(peer.id);
         if (previous) this.runtime.devices.heartbeat(peer.id, { enabled: false });

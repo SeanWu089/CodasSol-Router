@@ -154,3 +154,16 @@ The IP only changes socket resolution; tokens and `installationId` pins remain
 required as before. Invalid IPs, non-HTTPS pins and redirects are rejected.
 Do not commit deployment addresses or credentials. Verify the target IP through
 the trusted network inventory and repeat physical execution checks after changes.
+
+### Probe diagnostics
+
+Authenticated device lists and MCP discovery expose a nullable `connectivity`
+record for explicitly configured peers: `checkedAt` (Unix milliseconds),
+`durationMs`, `consecutiveFailures`, and `failureCode`. Fixed failure categories
+separate DNS, timeout, TLS, connection, authorization, protocol/identity and
+local catalog failures. Raw exceptions, peer URLs and credentials are excluded.
+Successful probes reset the failure count; failed probes retain the last
+successful contact time while immediately disabling the execution route.
+An unreachable peer's backend is unknown (`null`), not independently proven
+unhealthy. These fields measure the identity/health probe, not an end-to-end
+execution test; `executionVerified` remains unknown.
