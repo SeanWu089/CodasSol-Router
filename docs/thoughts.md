@@ -56,6 +56,53 @@
   In-memory authorization codes do not survive a mid-login ingress cutover.
   Therefore this is a building block, **not a production-ready OAuth server**.
 
+### Opt-in OAuth consent, refresh rotation and local persistence (2026-10-12)
+
+- Implemented `RefreshTokenRotation`: 48-byte random refresh secrets are
+  persisted only as SHA-256 digests; each redemption atomically spends the
+  old token and issues a new token in the same family, with a bounded
+  absolute expiry. Reuse of an old token revokes its entire family,
+  including descendants, and a distinct client/resource cannot redeem it.
+  Concurrent cross-node refresh uses a **test-only shared serializable
+  authority**; exactly one redemption wins, subsequent replay invalidates
+  that family. Access JWTs minted before refresh family revocation remain
+  independently valid until expiry unless access-token JTI revocations are
+  synchronized. No automatic replay of a timed-out refresh is safe.
+- `LocalRefreshAuthority` provides single-machine durable atomic
+  state-file replacement, fsync and bounded exclusive lock acquisition;
+  a possibly stale lock intentionally fails closed rather than
+  unilaterally being stolen. It is **NOT** a distributed authority, even
+  if two physical hosts point at the same network-mounted filename.
+  Actual Mac→Windows continuity needs a trusted externally fenced,
+  serializable state provider. Using the same local test file for two
+  loopback Routers does not demonstrate cross-host replication.
+- Added `POST /token` with strict form parsing, explicit code or refresh
+  grant types, cache-preventing headers, rotating refresh tokens, and
+  correctly surfaced `invalid_grant` vs `temporarily_unavailable`.
+  Added opt-in `GET/POST /authorize` consent flow for **pre-registered
+  client IDs only**, using a separately generated, five-minute,
+  one-use 256-bit owner approval code from the trusted local CLI
+  (`node src/router-cli.js oauth-approval-code`). The browser never
+  receives the Router's durable admin/pairing secrets. Consent page
+  displays the exact registered redirect and scope, escapes inputs,
+  applies restrictive CSP, checks callback allowlist and S256 PKCE before
+  consuming the local approval code, and returns code/state only to the
+  registered callback. Includes Authorization Server Metadata discovery
+  only if BOTH an OAuth issuer and approval store are deliberately
+  injected into the runtime.
+- Full local integration covers consent → browser redirect → code
+  exchange → refresh and a simulated two-Router HTTP token handoff,
+  including wrong callbacks, invalid approval codes, replay and
+  concurrent rotation. Node test suite 109/109 plus Mac tests pass.
+- **Hard launch blockers:** no user-ready OAuth startup/provisioning flow;
+  dynamic client registration (or verified Client ID Metadata Documents)
+  not implemented; local approval issuance requires trusted local CLI;
+  no provider-fenced shared grant storage or fresh synchronized revocation
+  authority; current public-MCP verifier's static revocation snapshot
+  becomes stale after 5 minutes; no real ChatGPT browser OAuth test or
+  physical ngrok Mac↔Windows handoff. Do **not** enable this development
+  OAuth mode on the production MCP ingress.
+
 ### Public owner identity preflight (2026-10-12)
 
 - HTTP 200 `/_codassol/health` is **not an ingress ownership proof**: the

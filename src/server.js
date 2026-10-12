@@ -12,6 +12,10 @@ import {
 import { createRouterRuntime } from "./runtime.js";
 import { addRouterTools, deviceSnapshot } from "./mcp-device-tools.js";
 import { INGRESS_OWNER_PROOF_ROUTE } from "./ingress/public-owner-proof.js";
+import { handlePublicOAuthTokenRequest } from "./ingress/public-oauth-http.js";
+import {
+  authorizationServerMetadata, handlePublicOAuthConsent
+} from "./ingress/public-oauth-consent.js";
 
 const HOP_BY_HOP = new Set([
   "connection",
@@ -589,6 +593,27 @@ export function createRouterServer(config = loadConfig(), runtime = null) {
       return;
     }
     if (runtime?.publicAuth) {
+      if (req.url === "/.well-known/oauth-authorization-server" &&
+          runtime.publicOauth && runtime.publicOauthApproval) {
+        if (req.method !== "GET") {
+          sendJson(res, 405, { error: "method_not_allowed" });
+        } else {
+          sendJson(res, 200, authorizationServerMetadata(runtime.publicOauth));
+        }
+        return;
+      }
+      if (req.url?.split("?")[0] === "/authorize" &&
+          runtime.publicOauth && runtime.publicOauthApproval) {
+        await handlePublicOAuthConsent(req, res, {
+          oauth: runtime.publicOauth,
+          approvalCodes: runtime.publicOauthApproval
+        });
+        return;
+      }
+      if (req.url === "/token" && runtime.publicOauth) {
+        await handlePublicOAuthTokenRequest(req, res, runtime.publicOauth);
+        return;
+      }
       if (req.url === "/.well-known/oauth-protected-resource" ||
           req.url === "/.well-known/oauth-protected-resource/mcp") {
         if (req.method !== "GET") {

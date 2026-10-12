@@ -2,6 +2,33 @@
 
 ## v0.3: public OAuth continuity (in progress, 2026-10-12)
 
+- [x] Implement short-lived, one-time local owner approval codes separate
+  from Router admin and pairing tokens, plus an opt-in browser consent
+  page restricted to pre-registered callback URIs and exact PKCE/resource.
+- [x] Implement `POST /token` for authorization-code+S256 and
+  refresh-token grant, including family rotation, replay revocation,
+  per-client/resource binding, bounded request parsing and no-store.
+  HTTP integration passes on independent Mac/Windows loopback Routers.
+- [x] Add local disk-backed refresh authority with atomic replacement,
+  exclusive locking and fail-closed stale-lock policy. It is SINGLE-HOST
+  only; parallel two-Router test uses shared test authority/local filename.
+- [x] Advertise RFC8414 authorization-server metadata only when
+  pre-registered client issuer AND owner approval flow are configured;
+  do not advertise DCR or client metadata support yet.
+- [ ] Build a real provider-fenced SERIALIZABLE refresh/grant authority
+  shared by physically independent Mac and Windows nodes. Ensure token
+  family revocation, JWT JTI revocation and grant state remain fresh and
+  rollback-resistant after unexpected power loss and leader handoff.
+- [ ] Implement compatible ChatGPT client registration using either
+  verified Client ID Metadata Documents (with SSRF defenses) or durable
+  RFC7591 Dynamic Client Registration with exact redirect allowlists;
+  retain a secure preregistration option.
+- [ ] Add a provisioned, user-ready startup and owner approval UX;
+  assess live revocation synchronization (the static 5-minute snapshot
+  currently blocks durable production authentication).
+- [ ] Validate the full *actual* ChatGPT login, refresh and live ngrok
+  two-host switch; no automatic upgrade of the legacy Mac connection.
+
 - [x] Separate CodasSol public MCP bearer validation from local DevSpace
   access tokens in opt-in Router mode. Verify stable issuer/audience/scope,
   pinned Ed25519 public keys, expiry, fresh revocation snapshots, and

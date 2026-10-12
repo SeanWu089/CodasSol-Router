@@ -1,5 +1,6 @@
 import os from "node:os";
 import { RouterPrivateState, defaultStateDir } from "./private-state.js";
+import { OAuthApprovalCodes } from "./ingress/oauth-approval-codes.js";
 
 function lanAddresses() {
   const results = [];
@@ -26,6 +27,12 @@ if (command === "init") {
 } else if (command === "admin-token") {
   await state.init();
   console.log(state.adminToken);
+} else if (command === "oauth-approval-code") {
+  // Display only when explicitly requested in a trusted local terminal.
+  // The code is one-use, expires after five minutes and is NOT a Router
+  // administrator or pairing credential.
+  const approvals = new OAuthApprovalCodes({ stateDir: defaultStateDir() });
+  console.log(await approvals.issue());
 } else if (command === "agents") {
   await state.init();
   const agents = state.listAgents();
@@ -53,6 +60,7 @@ if (command === "init") {
     "  npm run router:pairing-token",
     "  npm run router:peer-token",
     "  npm run router:admin-token",
+    "  node src/router-cli.js oauth-approval-code",
     "  npm run router:agents",
     "  npm run router:lan"
   ].join("\n"));
