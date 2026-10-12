@@ -1,5 +1,35 @@
 # Findings
 
+- 2026-10-12 — Added an **opt-in per-public-request ingress fence** for
+  experimental v0.3 public OAuth. A live Router checks its current pinned
+  installation lease, a fresh and locally COMMITTED auth checkpoint, and
+  two external witness lease verifications surrounding a latest-commit
+  check **before** handling public /mcp, OAuth consent/token/registration
+  or public OAuth discovery. A stale Mac Router still receiving ngrok
+  traffic after Windows gains the lease responds HTTP 503 rather than
+  forwarding to DevSpace. HTTP integration simulates two independent
+  Router processes accepting the SAME valid public JWT, changes the
+  external winner, and confirms the old Router no longer invokes its
+  backend; witness outage, stale digest/revision, expired claim, and
+  missing/pending local state all fail closed. Reader adapters separately
+  support the active leader's `authCommitAckRevision` and the passive
+  follower's signed `AuthReplicaStore.checkpoint`, never PREPARED state.
+- The `CODASSOL_REQUIRE_PUBLIC_INGRESS_FENCE=1` startup switch rejects
+  an experimental Router without a fully provisioned OAuth verifier and
+  injected request guard. There is currently **no ready-to-enable
+  end-user provisioning** of the guard, rotating lease, and persistent
+  per-device witness secrets. Turning on this switch in the existing Mac
+  production LaunchAgent would deliberately stop that Router from starting;
+  do not deploy it there. `LocalRefreshAuthority.snapshot()` performs
+  read-only atomic state retrieval rather than unnecessary write-lock
+  mutations on every request.
+- Limitation: this is **application-level** fencing, NOT ngrok
+  provider-side traffic fencing. It cannot prevent an old Agent from
+  consuming an ingress connection or fully cancel an RPC already in
+  flight. A real dual-host ingress switch, correctly fenced long-running
+  operations, deployed Cloudflare witness, durable lease-renewal and
+  cross-epoch recovery remain unverified.
+
 - 2026-10-12 — Cloudflare witness integration was checked with the actual
   `CloudflareWitnessAuthority` HTTPS-client protocol (in-memory HTTP
   transport), real signed `AuthReplicaStore` prepare/commit, and

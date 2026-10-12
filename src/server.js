@@ -579,6 +579,16 @@ async function handleAgentRoute(req, res, runtime) {
 }
 
 export function createRouterServer(config = loadConfig(), runtime = null) {
+  if (config.requirePublicIngressFence &&
+      (!runtime?.publicAuth ||
+       typeof runtime?.publicIngressRequestGuard?.authorizeRequest !== "function")) {
+    throw new TypeError("Configured public ingress fencing requires public OAuth and a live request guard");
+  }
+  if (runtime?.publicIngressRequestGuard &&
+      (typeof runtime.publicIngressRequestGuard.authorizeRequest !== "function" ||
+       !runtime.publicAuth)) {
+    throw new TypeError("Experimental public ingress fence requires explicit public OAuth and a live request guard");
+  }
   return http.createServer(async (req, res) => {
     if (req.url === INGRESS_OWNER_PROOF_ROUTE) {
       if (req.method !== "POST" || !runtime?.ingressOwnerProof) {
@@ -594,6 +604,27 @@ export function createRouterServer(config = loadConfig(), runtime = null) {
       return;
     }
     if (runtime?.publicAuth) {
+      // Check the *current* external lease + committed OAuth checkpoint on
+      // EVERY public MCP and OAuth exchange, not only when starting ngrok.
+      // A stale Mac Agent may still be connected to the same ngrok domain.
+      // Do not redirect an unauthorized request to DevSpace.
+      const path = req.url?.split("?")[0];
+      const guardedPaths = new Set([
+        "/mcp", "/authorize", "/token", "/register", "/revoke", "/jwks",
+        "/.well-known/oauth-authorization-server",
+        "/.well-known/oauth-protected-resource",
+        "/.well-known/oauth-protected-resource/mcp"
+      ]);
+      if (runtime.publicIngressRequestGuard && guardedPaths.has(path)) {
+        try {
+          if (await runtime.publicIngressRequestGuard.authorizeRequest() !== true) {
+            throw new Error("Witness did not grant ingress");
+          }
+        } catch {
+          sendJson(res, 503, { error: "public_ingress_fenced" });
+          return;
+        }
+      }
       if (req.url === "/register" &&
           runtime.publicOauth?.dynamicClientRegistry &&
           runtime.publicOauthApproval) {

@@ -2,6 +2,23 @@
 
 ## v0.3: public OAuth continuity (in progress, 2026-10-12)
 
+- [x] Add opt-in public MCP/OAuth per-request external witness fence:
+  current-claim lease verification, fresh locally COMMITTED and
+  latest-authoritative digest match, rechecks for lease/state race,
+  HTTP 503 fail-closed behavior and no DevSpace fallback. Integration
+  verifies the same bearer survives a simulated Mac→Windows winner
+  change while an old Mac Router is still listening.
+- [x] Add separate read-only local snapshots for leader vs follower
+  signed committed state; reject pending PREPARED follower revisions.
+- [x] Require an explicitly provisioned request guard at startup when
+  `CODASSOL_REQUIRE_PUBLIC_INGRESS_FENCE=1`. This experimental mode
+  is NOT enabled in the running Mac; no production deployment implied.
+- [ ] Provision validated real-cloud witness endpoint and immutable
+  Mac/Windows installation credentials, renew leases, bind request
+  fencing to a real Router startup and run physical double-host tests.
+  Block promotion without provider-side ngrok exclusivity and durable
+  cross-epoch authorization recovery.
+
 - [x] Verify the actual Cloudflare witness client against the
   simulated ingress activation state machine and signed replica store:
   prepared-only state, absent authoritative latest proof and witness

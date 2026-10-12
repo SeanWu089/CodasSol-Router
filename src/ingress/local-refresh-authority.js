@@ -22,6 +22,24 @@ export class LocalRefreshAuthority {
     this.distributedSafe = false;
   }
 
+  /**
+   * Read a complete atomically-renamed snapshot WITHOUT acquiring the write
+   * lock, modifying the authorization file or creating an empty store.
+   * This is safe for a single-host file; it is not a cross-host quorum read.
+   */
+  async snapshot() {
+    const raw = await readFile(this.filePath, "utf8");
+    if (Buffer.byteLength(raw) > 12_000_000) {
+      throw new Error("Refresh authority state exceeds size limit");
+    }
+    const state = JSON.parse(raw);
+    if (state?.version !== 1 || !state.records ||
+        typeof state.records !== "object" || Array.isArray(state.records)) {
+      throw new Error("Unsupported refresh authority state");
+    }
+    return state;
+  }
+
   async transact(change) {
     if (typeof change !== "function") throw new TypeError("Mutation function required");
     await mkdir(path.dirname(this.filePath), { recursive: true, mode: 0o700 });
