@@ -109,6 +109,13 @@ export default {
     catch { return json({ error: "invalid_request" }, 400); }
     if (payload == null || typeof payload !== "object" ||
         Array.isArray(payload)) return json({ error: "invalid_request" }, 400);
+    if (typeof env.CODASSOL_PUBLIC_DOMAIN !== "string" ||
+        !/^https:\/\/[a-z0-9.-]+(?::443)?$/.test(env.CODASSOL_PUBLIC_DOMAIN)) {
+      return json({ error: "unavailable" }, 503);
+    }
+    if (action === "acquire" && payload.domain !== env.CODASSOL_PUBLIC_DOMAIN) {
+      return json({ error: "domain_mismatch" }, 400);
+    }
 
     // A single fixed Durable Object name prevents different installations
     // from independently initializing conflicting witness instances.
