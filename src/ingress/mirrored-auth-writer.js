@@ -194,6 +194,21 @@ export class MirroredAuthWriter {
           throw unavailable("Writer lost external fencing after witness publication");
         }
       }
+      // The witness records an AUTHORITATIVE latest committed digest only
+      // after the standby has independently verified the signed COMMIT.
+      // An absent/ambiguous witness response never returns a refresh token.
+      if (this.commitPublisher) {
+        const published = await this.commitPublisher({
+          epoch: this.epoch, revision: prepared.revision,
+          digest: prepared.digest, previous: prepared.previous
+        });
+        if (published !== true) {
+          throw unavailable("External latest-commit publication was refused");
+        }
+        if (await this.verifyFence(this.epoch) !== true) {
+          throw unavailable("Writer lost fencing after witness publication");
+        }
+      }
       await this.localAuthority.transact((local) => {
         if (local.authRevision !== prepared.revision ||
             local.lastReplicaDigest !== prepared.digest ||
