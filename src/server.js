@@ -443,9 +443,73 @@ async function handleAgentRoute(req, res, runtime) {
     return true;
   }
 
+  if (req.url === "/_codassol/agent/events" && req.method === "GET") {
+    ensureRegisteredDevice(runtime, identity);
+    // SSE is downstream-only. Agent results and positive liveness reports
+    // continue to use authenticated POSTs. Keepalive comments are not ACKs.
+    const sendEvent = (name, data) => {
+      if (res.destroyed || res.writableEnded) return false;
+      if (res.writableLength > 256_000) {
+        res.destroy();
+        return false;
+      }
+      res.write(`event: ${name}\ndata: ${JSON.stringify(data)}\n\n`);
+      return true;
+    };
+    let unsubscribe;
+    try {
+      // Reserve the sole consumer before sending response headers.
+      unsubscribe = runtime.agentHub.subscribe(
+        identity.id, (job) => sendEvent("job", { job }),
+        () => { if (!res.destroyed) res.end(); }
+      );
+    } catch (error) {
+      sendJson(res, 409, { error: error.code || "agent_consumer_active" });
+      return true;
+    }
+    res.writeHead(200, {
+      "content-type": "text/event-stream; charset=utf-8",
+      "cache-control": "no-cache, no-transform",
+      "x-accel-buffering": "no",
+      "connection": "keep-alive"
+    });
+    res.flushHeaders();
+    sendEvent("ready", { deviceId: identity.id, protocol: 1 });
+    const keepalive = setInterval(() => {
+      if (!res.destroyed && !res.writableEnded) {
+        if (res.writableLength > 256_000) {
+          res.destroy();
+          return;
+        }
+        res.write(": keepalive\n\n");
+      }
+    }, 20_000);
+    keepalive.unref?.();
+    let cleaned = false;
+    const cleanup = () => {
+      if (cleaned) return;
+      cleaned = true;
+      clearInterval(keepalive);
+      unsubscribe();
+    };
+    res.once("close", cleanup);
+    req.once("close", () => {
+      // A finished GET request does not mean the response stream closed.
+      if (res.destroyed) cleanup();
+    });
+    return true;
+  }
+
   if (req.url === "/_codassol/agent/poll" && req.method === "POST") {
     ensureRegisteredDevice(runtime, identity);
-    const job = await runtime.agentHub.poll(identity.id);
+    let job;
+    try {
+      job = await runtime.agentHub.poll(identity.id);
+    } catch (error) {
+      if (error.code !== "AGENT_CONSUMER_ACTIVE") throw error;
+      sendJson(res, 409, { error: "agent_consumer_active" });
+      return true;
+    }
     sendJson(res, 200, { ok: true, job });
     return true;
   }
@@ -594,7 +658,12 @@ if (isMain) {
   console.log(
     `CodasSol Router listening on http://${config.listenHost}:${config.listenPort} -> http://${config.backendHost}:${config.backendPort}`
   );
-  const shutdown = () => server.close(() => process.exit(0));
+  const shutdown = () => {
+    // Active SSE responses would otherwise prevent http.Server.close from
+    // completing; close only our own subscribers before stopping the Router.
+    activeRuntime.agentHub?.closeStreams();
+    server.close(() => process.exit(0));
+  };
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
 }

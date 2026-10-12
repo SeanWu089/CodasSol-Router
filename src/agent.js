@@ -3,6 +3,7 @@ import process from "node:process";
 import { pathToFileURL } from "node:url";
 import { AgentConfigStore } from "./agent-config.js";
 import { DevSpaceLocalOAuth } from "./devspace-local-auth.js";
+import { consumeAgentEvents, reconnectDelayMs, SseUnavailableError } from "./agent-sse.js";
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -155,23 +156,99 @@ async function executeHttpJob(configStore, config, payload) {
 
 export async function runAgent({
   configStore = new AgentConfigStore(),
-  stopSignal = () => false
+  stopSignal = () => false,
+  transport = process.env.CODASSOL_AGENT_TRANSPORT === "poll" ? "poll" : "sse"
 } = {}) {
   const config = await configStore.load();
+  const heartbeat = () => routerJson(`${config.routerUrl}/_codassol/agent/heartbeat`, {
+    token: config.agentToken,
+    body: {
+      roots: config.device.roots,
+      capabilities: config.device.capabilities
+    },
+    timeoutMs: 10_000
+  });
+  const reportJob = async (job) => {
+    let body;
+    try {
+      const result = await executeHttpJob(configStore, config, job.payload);
+      body = { jobId: job.id, ok: true, result };
+    } catch (error) {
+      body = {
+        jobId: job.id,
+        ok: false,
+        error: {
+          code: error?.code || "AGENT_JOB_FAILED",
+          message: error instanceof Error ? error.message : String(error)
+        }
+      };
+    }
+    await routerJson(`${config.routerUrl}/_codassol/agent/result`, {
+      token: config.agentToken, body, timeoutMs: 10_000
+    });
+  };
+  const logError = (error) => process.stderr.write(
+    `CodasSol Agent connection error: ${error instanceof Error ? error.message : String(error)}\n`
+  );
   let heartbeatAt = 0;
+  let sseFailures = 0;
+  let sseUnavailable = transport === "poll";
 
   while (!stopSignal()) {
     try {
       if (Date.now() >= heartbeatAt) {
-        await routerJson(`${config.routerUrl}/_codassol/agent/heartbeat`, {
-          token: config.agentToken,
-          body: {
-            roots: config.device.roots,
-            capabilities: config.device.capabilities
-          },
-          timeoutMs: 10_000
-        });
-        heartbeatAt = Date.now() + 10_000;
+        await heartbeat();
+        // Positive agent liveness: ~1,440 requests / 30 days per node,
+        // instead of ~259,200 at ten-second intervals.
+        heartbeatAt = Date.now() + 60_000;
+      }
+
+      if (!sseUnavailable) {
+        const controller = new AbortController();
+        const stopTimer = setInterval(() => {
+          if (stopSignal()) controller.abort();
+        }, 1_000);
+        stopTimer.unref?.();
+        const heartbeatTimer = setInterval(() => {
+          if (Date.now() < heartbeatAt) return;
+          heartbeatAt = Date.now() + 60_000;
+          heartbeat().catch(logError);
+        }, 5_000);
+        heartbeatTimer.unref?.();
+        const connectedAt = Date.now();
+        try {
+          await consumeAgentEvents({
+            url: `${config.routerUrl}/_codassol/agent/events`,
+            token: config.agentToken,
+            signal: controller.signal,
+            onJob: reportJob
+          });
+          if (stopSignal()) break;
+          throw new Error("SSE connection ended unexpectedly");
+        } catch (error) {
+          if (stopSignal()) break;
+          if (error instanceof SseUnavailableError) {
+            sseUnavailable = true;
+          } else {
+            logError(error);
+            sseFailures = Date.now() - connectedAt > 60_000
+              ? 1 : sseFailures + 1;
+            // A few failed SSE attempts may indicate an intermediary that
+            // cannot stream. Try one legacy poll, then retry SSE.
+            if (sseFailures >= 3 && ![401, 403, 409].includes(error.status)) {
+              const polled = await routerJson(`${config.routerUrl}/_codassol/agent/poll`, {
+                token: config.agentToken, body: {}, timeoutMs: 32_000
+              });
+              if (polled.job) await reportJob(polled.job);
+            }
+            await sleep(reconnectDelayMs(sseFailures));
+          }
+          continue;
+        } finally {
+          controller.abort();
+          clearInterval(stopTimer);
+          clearInterval(heartbeatTimer);
+        }
       }
 
       const polled = await routerJson(`${config.routerUrl}/_codassol/agent/poll`, {
@@ -180,32 +257,9 @@ export async function runAgent({
         timeoutMs: 32_000
       });
       if (!polled.job) continue;
-
-      try {
-        const result = await executeHttpJob(configStore, config, polled.job.payload);
-        await routerJson(`${config.routerUrl}/_codassol/agent/result`, {
-          token: config.agentToken,
-          body: { jobId: polled.job.id, ok: true, result },
-          timeoutMs: 10_000
-        });
-      } catch (error) {
-        await routerJson(`${config.routerUrl}/_codassol/agent/result`, {
-          token: config.agentToken,
-          body: {
-            jobId: polled.job.id,
-            ok: false,
-            error: {
-              code: error?.code || "AGENT_JOB_FAILED",
-              message: error instanceof Error ? error.message : String(error)
-            }
-          },
-          timeoutMs: 10_000
-        });
-      }
+      await reportJob(polled.job);
     } catch (error) {
-      process.stderr.write(
-        `CodasSol Agent connection error: ${error instanceof Error ? error.message : String(error)}\n`
-      );
+      logError(error);
       await sleep(2_000);
     }
   }

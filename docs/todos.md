@@ -37,10 +37,15 @@
   ngrok Endpoint Pooling against simplicity, latency, free-plan usage and
   single-owner stability; record the SSE-first decision and trade-offs in
   `docs/thoughts.md`. This is a **design decision**, not a deployed feature.
-- [ ] Prototype authenticated outbound HTTPS SSE with a standby node, small
-  heartbeat/keepalive frames, task events, HTTP POST results, bounded reconnect
-  backoff/jitter, and fallback to existing HTTP Agent polling. Preserve
-  device-scoped authorization and DevSpace-local execution.
+- [x] Implement and test **local loopback** SSE-first Agent/Router transport:
+  bearer-authenticated task events, 20s keepalive, positive 60s POST heartbeat,
+  HTTP POST results, duplicate-consumer rejection, stale-job purging,
+  bounded exponential reconnect jitter and compatibility fallback to polling.
+  Node regression tests pass; NOT installed on the live Mac service.
+- [ ] Validate the new SSE protocol **over ngrok HTTPS** on an isolated test
+  tunnel, including proxy buffering, idle cutoff, network partitions,
+  reconnect/fallback timings and device-bound token revocation. Only then
+  enable new transport in the regular installed Agents.
 - [ ] Measure ngrok request/transfer accounting, SSE proxy/idle timeout and
   reconnection behavior with two real devices over a 24-hour soak; include
   short network outages, service restart and unexpected power loss.

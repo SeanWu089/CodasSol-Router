@@ -2,6 +2,27 @@
 
 ## v0.3 transport decision — lightweight Single Ingress (2026-10-10)
 
+### Local implementation checkpoint (2026-10-12)
+
+- Added **opt-in-by-new-code SSE-first Agent transport** using the existing
+  enrolled per-device bearer token: authenticated
+  `GET /_codassol/agent/events` streams `ready`/`job` frames and periodic
+  SSE keepalive comments; existing authenticated `POST /agent/result` is
+  unchanged. A positive `POST /agent/heartbeat` is still required every
+  ~60 seconds; one-way SSE keepalive alone is **not** proof of client health.
+- One consumer per device is enforced; legacy HTTP polling is retained for
+  servers without SSE support, and a single poll is attempted after repeated
+  transient stream failures. Reconnects use exponential backoff with jitter,
+  bounded output buffering, and no automatic replay of delivered commands.
+  Expired, unclaimed jobs are purged from the queue.
+- **Validated only in an isolated Mac loopback test Router**, including
+  live SSE Agent execution/error-result POST, auth rejection, duplicate
+  subscription rejection, fallback detection, shutdown, and no stale queued
+  mutations. Not deployed to the live Mac Router/DevSpace/ngrok installation,
+  not tested on ngrok HTTPS, and **not** a working Dynamic Ingress takeover.
+  Ownership fencing, shared OAuth acceptance and real dual-host cutover
+  remain separate unfinished milestones.
+
 **Architecture keywords:** `Single Stable MCP URL` · `Sticky Leader` ·
 `Passive Failover` · `HTTPS SSE (Server-Sent Events)` ·
 `Outbound-Only Agent` · `HTTP POST Result` · `Heartbeat/Keepalive` ·
