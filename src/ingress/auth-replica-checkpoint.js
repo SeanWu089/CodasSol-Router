@@ -9,6 +9,7 @@ const VERSION = 1;
 // exceeding this bound must be transferred by a future chunked protocol.
 const MAX_PLAINTEXT_BYTES = 128_000;
 const MAX_ENVELOPE_BYTES = 220_000;
+const VERIFIED_COMMIT = Symbol("verified-auth-replica-commit");
 const b64 = (value) => Buffer.from(value).toString("base64url");
 const digest = (value) => createHash("sha256").update(value).digest("base64url");
 
@@ -199,6 +200,10 @@ export class AuthReplicaStore {
         !Number.isSafeInteger(opened.epoch) ||
         !Number.isSafeInteger(opened.revision)) throw fail("Invalid decoded checkpoint");
     return this.authority.transact((data) => {
+      // A prepared snapshot is intentionally NOT an authoritative state.
+      // It must not become visible to OAuth until a signed post-commit
+      // certificate arrives. Refuse another prepare in the uncertain gap.
+      if (data.pending) throw fail("Uncommitted checkpoint requires reconciliation");
       const last = data.checkpoint || null;
       if (last && (opened.epoch !== last.epoch ||
           opened.revision !== last.revision + 1)) {
@@ -212,15 +217,140 @@ export class AuthReplicaStore {
       if (last && opened.previous !== last.digest) {
         throw fail("Checkpoint chain mismatch");
       }
-      data.checkpoint = {
+      data.pending = {
         epoch: opened.epoch, revision: opened.revision,
-        digest: opened.digest, expiresAt: opened.expiresAt
+        digest: opened.digest, expiresAt: opened.expiresAt,
+        namespaces: opened.state.namespaces
       };
-      data.namespaces = opened.state.namespaces;
-      data.lastReplicaAckAt = Date.now();
-      return structuredClone(data.checkpoint);
+      return {
+        epoch: opened.epoch, revision: opened.revision,
+        digest: opened.digest, prepared: true
+      };
     });
   }
+
+  async commit(confirmed, capability) {
+    // The capability is module-private. External callers cannot bypass
+    // receiver.commit()'s pinned Ed25519 verification by forging an object
+    // containing { verified: true }.
+    if (capability !== VERIFIED_COMMIT ||
+        !confirmed || confirmed.verified !== true) {
+      throw fail("Verified commit certificate required");
+    }
+    return this.authority.transact((data) => {
+      const pending = data.pending;
+      if (!pending || pending.epoch !== confirmed.epoch ||
+          pending.revision !== confirmed.revision ||
+          pending.digest !== confirmed.digest) {
+        throw fail("Commit does not match prepared checkpoint");
+      }
+      data.checkpoint = {
+        epoch: pending.epoch, revision: pending.revision,
+        digest: pending.digest, expiresAt: pending.expiresAt
+      };
+      data.namespaces = pending.namespaces;
+      data.pending = null;
+      data.lastReplicaAckAt = Date.now();
+      return { ...data.checkpoint, committed: true };
+    });
+  }
+
+  /**
+   * Readiness check ONLY. A separate, authoritative provider must prove
+   * exclusive fencing AND that this digest is its latest committed revision.
+   * Returning a snapshot must never by itself activate a public tunnel.
+   */
+  async preflightPromotion({
+    confirmLatestCommitted, verifyFencedClaim,
+    maxAgeMs = 300_000, clock = () => Date.now()
+  } = {}) {
+    if (typeof confirmLatestCommitted !== "function" ||
+        typeof verifyFencedClaim !== "function" ||
+        !Number.isSafeInteger(maxAgeMs) || maxAgeMs < 1_000 ||
+        maxAgeMs > 300_000) throw new TypeError("Authoritative promotion checks required");
+    const snapshot = await this.authority.transact((state) => ({
+      pending: Boolean(state.pending),
+      checkpoint: structuredClone(state.checkpoint ?? null),
+      lastReplicaAckAt: state.lastReplicaAckAt
+    }));
+    if (snapshot.pending || !snapshot.checkpoint ||
+        !Number.isSafeInteger(snapshot.lastReplicaAckAt) ||
+        clock() - snapshot.lastReplicaAckAt > maxAgeMs ||
+        snapshot.lastReplicaAckAt > clock() + 5_000) {
+      throw fail("Replica has no fresh, unambiguous committed state");
+    }
+    // The external checks are both necessary; a local signed checkpoint is
+    // insufficient to prove a previous leader could not continue writing.
+    if (await verifyFencedClaim() !== true ||
+        await confirmLatestCommitted(snapshot.checkpoint) !== true ||
+        await verifyFencedClaim() !== true) {
+      throw fail("External authority did not verify promotion");
+    }
+    return Object.freeze({ ...snapshot.checkpoint, promotable: true });
+  }
+}
+
+const COMMIT_FIELDS = (c) => JSON.stringify({
+  version: c.version, issuer: c.issuer,
+  source: c.source, target: c.target,
+  epoch: c.epoch, revision: c.revision, digest: c.digest,
+  issuedAt: c.issuedAt, expiresAt: c.expiresAt
+});
+
+/** Only the former leader can issue a commit certificate, AFTER its own
+ * durable transaction has completed under external fencing. */
+export function sealAuthCommit({
+  issuer, source, target, epoch, revision, digest: checkpointDigest,
+  signingKey, clock = () => Date.now(), lifetimeMs = 60_000
+} = {}) {
+  const origin = validateOrigin(issuer);
+  installationId(source);
+  installationId(target);
+  keyType(signingKey, "private", "ed25519");
+  if (!Number.isSafeInteger(epoch) || epoch < 1 ||
+      !Number.isSafeInteger(revision) || revision < 1 ||
+      typeof checkpointDigest !== "string" ||
+      !/^[A-Za-z0-9_-]{43}$/.test(checkpointDigest) ||
+      !Number.isSafeInteger(lifetimeMs) ||
+      lifetimeMs < 1000 || lifetimeMs > 300_000) {
+    throw new TypeError("Invalid commit certificate parameters");
+  }
+  const issuedAt = clock();
+  const commit = {
+    version: 1, issuer: origin, source, target,
+    epoch, revision, digest: checkpointDigest,
+    issuedAt, expiresAt: issuedAt + lifetimeMs
+  };
+  return { ...commit, signature: b64(sign(null,
+    Buffer.from(COMMIT_FIELDS(commit)), signingKey)) };
+}
+
+function verifyAuthCommit({
+  certificate, issuer, expectedSource, localInstallationId,
+  trustedSigningKey, clock = () => Date.now()
+}) {
+  const origin = validateOrigin(issuer);
+  if (!certificate || Buffer.byteLength(JSON.stringify(certificate)) > 4096 ||
+      certificate.version !== 1 ||
+      certificate.issuer !== origin ||
+      certificate.source !== expectedSource ||
+      certificate.target !== localInstallationId ||
+      !Number.isSafeInteger(certificate.epoch) || certificate.epoch < 1 ||
+      !Number.isSafeInteger(certificate.revision) || certificate.revision < 1 ||
+      !/^[A-Za-z0-9_-]{43}$/.test(certificate.digest ?? "") ||
+      !Number.isSafeInteger(certificate.issuedAt) ||
+      !Number.isSafeInteger(certificate.expiresAt) ||
+      certificate.issuedAt > clock() + 5_000 ||
+      certificate.expiresAt <= clock() ||
+      certificate.expiresAt - certificate.issuedAt > 300_000 ||
+      typeof certificate.signature !== "string") throw fail("Invalid commit certificate");
+  const verified = verify(null, Buffer.from(COMMIT_FIELDS(certificate)),
+    trustedSigningKey, Buffer.from(certificate.signature, "base64url"));
+  if (!verified) throw fail("Commit signature verification failed");
+  return {
+    verified: true, epoch: certificate.epoch,
+    revision: certificate.revision, digest: certificate.digest
+  };
 }
 
 /**
@@ -245,7 +375,18 @@ export function createAuthReplicaReceiver({
       // The receipt is returned ONLY after atomic local persistence.
       const durable = await store.receive(opened);
       return {
-        replicated: true, epoch: durable.epoch,
+        replicated: true, prepared: true, epoch: durable.epoch,
+        revision: durable.revision, digest: durable.digest
+      };
+    },
+    async commit(certificate) {
+      const confirmed = verifyAuthCommit({
+        certificate, issuer, expectedSource, localInstallationId,
+        trustedSigningKey, clock
+      });
+      const durable = await store.commit(confirmed, VERIFIED_COMMIT);
+      return {
+        committed: true, epoch: durable.epoch,
         revision: durable.revision, digest: durable.digest
       };
     }
@@ -268,10 +409,31 @@ export async function sendAuthReplicaCheckpoint({
     type: "auth-replica-checkpoint", checkpoint
   }, { timeoutMs });
   const expected = digest(canonical(checkpoint));
-  if (result?.replicated !== true || result.digest !== expected ||
+  if (result?.replicated !== true || result.prepared !== true ||
+      result.digest !== expected ||
       result.revision !== checkpoint.revision ||
       result.epoch !== checkpoint.epoch) {
     throw fail("Replica receipt did not match committed checkpoint");
+  }
+  return result;
+}
+
+export async function sendAuthReplicaCommit({
+  agentHub, deviceId, certificate, timeoutMs = 20_000
+} = {}) {
+  if (typeof agentHub?.enqueue !== "function" ||
+      typeof deviceId !== "string" || !deviceId ||
+      !certificate || typeof certificate.digest !== "string") {
+    throw new TypeError("A device-scoped commit certificate is required");
+  }
+  const result = await agentHub.enqueue(deviceId, {
+    type: "auth-replica-commit", certificate
+  }, { timeoutMs });
+  if (result?.committed !== true ||
+      result.epoch !== certificate.epoch ||
+      result.revision !== certificate.revision ||
+      result.digest !== certificate.digest) {
+    throw fail("Replica commit acknowledgement mismatch");
   }
   return result;
 }

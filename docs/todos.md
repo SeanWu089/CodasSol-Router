@@ -2,6 +2,21 @@
 
 ## v0.3: public OAuth continuity (in progress, 2026-10-12)
 
+- [x] Implement two-phase auth replication: signed/encrypted PREPARED
+  snapshot, durable local source commit, signed COMMITTED certificate,
+  durable standby confirmation and source-side ACK before returning
+  OAuth results. Block pending-state promotion, unsigned commit bypass,
+  ambiguous ACK retries and concurrent same-host transaction races.
+- [x] Add opt-in ingress activation preflight binding locally COMMITTED
+  replica state to an EXTERNALLY confirmed latest revision and verified
+  fenced ingress claim. Run mock two-node takeover tests where pending,
+  absent latest-proof and lease failures prohibit activation.
+- [ ] Design and physically test the external latest-commit register,
+  exclusive lease and crash reconciliation, including source crash
+  between its local fsync and the signed commit certificate. Preserve
+  fail-closed behavior until these are available: **mock leases are
+  insufficient for production automatic takeover**.
+
 - [x] Prototype encrypted, signed, per-recipient auth state replication:
   pinned source/target identities, source signature, AES-GCM confidentiality,
   monotonic revision/digest chain, rollback/gap/epoch rejection and

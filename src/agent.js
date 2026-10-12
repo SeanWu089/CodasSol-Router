@@ -186,20 +186,23 @@ export async function runAgent({
     }
     let body;
     try {
-      const result = job.payload?.type === "auth-replica-checkpoint"
-        ? await (async () => {
-            if (!replicaReceiver ||
-                typeof replicaReceiver.receive !== "function") {
-              throw Object.assign(new Error("Replica receiver not configured"), {
-                code: "AUTH_REPLICA_DISABLED"
-              });
-            }
-            // Auth replica jobs are not MCP commands: they NEVER invoke the
-            // local DevSpace backend and can only write via the pinned
-            // checkpoint signature/recipient verifier.
-            return replicaReceiver.receive(job.payload.checkpoint);
-          })()
-        : await executeHttpJob(configStore, config, job.payload);
+      let result;
+      if (job.payload?.type === "auth-replica-checkpoint" ||
+          job.payload?.type === "auth-replica-commit") {
+        const commit = job.payload.type === "auth-replica-commit";
+        const handler = commit ? replicaReceiver?.commit : replicaReceiver?.receive;
+        if (typeof handler !== "function") {
+          throw Object.assign(new Error("Replica receiver not configured"), {
+            code: "AUTH_REPLICA_DISABLED"
+          });
+        }
+        // Replica jobs can never be forwarded to the local DevSpace. The
+        // receiver pins signer, recipient, installation and ordered state.
+        result = await handler.call(replicaReceiver,
+          commit ? job.payload.certificate : job.payload.checkpoint);
+      } else {
+        result = await executeHttpJob(configStore, config, job.payload);
+      }
       body = { jobId: job.id, ok: true, result };
     } catch (error) {
       body = {

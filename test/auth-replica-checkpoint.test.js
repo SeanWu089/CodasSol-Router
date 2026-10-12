@@ -7,7 +7,8 @@ import path from "node:path";
 import test from "node:test";
 import {
   AuthReplicaStore, createAuthReplicaReceiver,
-  openAuthCheckpoint, sealAuthCheckpoint, sendAuthReplicaCheckpoint
+  openAuthCheckpoint, sealAuthCheckpoint, sealAuthCommit,
+  sendAuthReplicaCheckpoint, sendAuthReplicaCommit
 } from "../src/ingress/auth-replica-checkpoint.js";
 import { runAgent } from "../src/agent.js";
 import { createRouterRuntime } from "../src/runtime.js";
@@ -51,6 +52,15 @@ function open(checkpoint, overrides = {}) {
     localInstallationId: windows,
     trustedSigningKey: macSign.publicKey,
     recipientPrivateKey: winEnc.privateKey,
+    clock: () => now, ...overrides
+  });
+}
+
+function commitFor(opened, overrides = {}) {
+  return sealAuthCommit({
+    issuer, source: mac, target: windows,
+    epoch: opened.epoch, revision: opened.revision,
+    digest: opened.digest, signingKey: macSign.privateKey,
     clock: () => now, ...overrides
   });
 }
@@ -113,6 +123,22 @@ test("persistent replica accepts only a monotonic single-epoch authenticated cha
     const store = new AuthReplicaStore({ filePath: file });
     const first = open(make());
     await store.receive(first);
+    assert.equal(JSON.parse(await readFile(file, "utf8")).namespaces, undefined,
+      "a prepared snapshot is not committed OAuth state");
+    await assert.rejects(store.preflightPromotion({
+      verifyFencedClaim: async () => true,
+      confirmLatestCommitted: async () => true
+    }), { code: "AUTH_REPLICA_REJECTED" });
+    const receiver = createAuthReplicaReceiver({
+      issuer, expectedSource: mac,
+      localInstallationId: windows, trustedSigningKey: macSign.publicKey,
+      recipientPrivateKey: winEnc.privateKey, store, clock: () => now
+    });
+    await assert.rejects(store.commit({
+      verified: true, epoch: first.epoch,
+      revision: first.revision, digest: first.digest
+    }), { code: "AUTH_REPLICA_REJECTED" });
+    await receiver.commit(commitFor(first));
     assert.equal((await readFile(file, "utf8")).includes("private-owner"), true,
       "follower local state is private and must be protected by OS permissions");
     const second = open(make(2, first.digest));
@@ -131,7 +157,66 @@ test("persistent replica accepts only a monotonic single-epoch authenticated cha
     await assert.rejects(rebooted.receive(open(make(3, second.digest, { epoch: 5 }))), {
       code: "AUTH_REPLICA_REJECTED"
     });
+    const rebootedReceiver = createAuthReplicaReceiver({
+      issuer, expectedSource: mac,
+      localInstallationId: windows, trustedSigningKey: macSign.publicKey,
+      recipientPrivateKey: winEnc.privateKey, store: rebooted, clock: () => now
+    });
+    await rebootedReceiver.commit(commitFor(second));
     assert.equal((await rebooted.receive(open(make(3, second.digest)))).revision, 3);
+  } finally {
+    await rm(temp, { recursive: true, force: true });
+  }
+});
+
+test("promotion preflight requires committed replica AND external latest-commit/fenced-claim evidence", async () => {
+  const temp = await mkdtemp(path.join(os.tmpdir(), "codas-promotion-"));
+  try {
+    const store = new AuthReplicaStore({
+      filePath: path.join(temp, "replica.json")
+    });
+    const receiver = createAuthReplicaReceiver({
+      issuer, expectedSource: mac, localInstallationId: windows,
+      trustedSigningKey: macSign.publicKey,
+      recipientPrivateKey: winEnc.privateKey,
+      store, clock: () => now
+    });
+    const first = make();
+    const received = await receiver.receive(first);
+    const evidence = {
+      confirmLatestCommitted: async (checkpoint) =>
+        checkpoint.digest === received.digest,
+      verifyFencedClaim: async () => true
+    };
+    await assert.rejects(store.preflightPromotion(evidence), {
+      code: "AUTH_REPLICA_REJECTED"
+    });
+    const unsigned = commitFor(open(first));
+    await assert.rejects(receiver.commit({
+      ...unsigned,
+      signature: (unsigned.signature[0] === "A" ? "B" : "A") +
+        unsigned.signature.slice(1)
+    }), { code: "AUTH_REPLICA_REJECTED" });
+    await receiver.commit(unsigned);
+    const approved = await store.preflightPromotion(evidence);
+    assert.equal(approved.promotable, true);
+    assert.equal(approved.digest, received.digest);
+    await assert.rejects(store.preflightPromotion({
+      ...evidence, confirmLatestCommitted: async () => false
+    }), { code: "AUTH_REPLICA_REJECTED" });
+    await assert.rejects(store.preflightPromotion({
+      ...evidence, verifyFencedClaim: async () => false
+    }), { code: "AUTH_REPLICA_REJECTED" });
+    await assert.rejects(store.preflightPromotion({
+      ...evidence, clock: () => Date.now() + 400_000
+    }), { code: "AUTH_REPLICA_REJECTED" });
+    const second = make(2, received.digest);
+    await receiver.receive(second);
+    await assert.rejects(store.preflightPromotion(evidence), {
+      code: "AUTH_REPLICA_REJECTED"
+    });
+    assert.equal(JSON.parse(await readFile(store.authority.filePath, "utf8"))
+      .checkpoint.revision, 1, "tentative revision 2 must remain unpublished");
   } finally {
     await rm(temp, { recursive: true, force: true });
   }
@@ -203,14 +288,22 @@ test("two Router loopback SSE replicates encrypted OAuth checkpoint with durable
       checkpoint: first, timeoutMs: 3_000
     });
     assert.deepEqual(received, {
-      replicated: true, epoch: 4, revision: 1,
+      replicated: true, prepared: true, epoch: 4, revision: 1,
       digest: open(first).digest
     });
+    assert.equal((await sendAuthReplicaCommit({
+      agentHub: runtime.agentHub, deviceId: "windows",
+      certificate: commitFor(open(first)), timeoutMs: 3_000
+    })).committed, true);
     const second = make(2, received.digest);
     assert.equal((await sendAuthReplicaCheckpoint({
       agentHub: runtime.agentHub, deviceId: "windows",
       checkpoint: second, timeoutMs: 3_000
     })).revision, 2);
+    await sendAuthReplicaCommit({
+      agentHub: runtime.agentHub, deviceId: "windows",
+      certificate: commitFor(open(second)), timeoutMs: 3_000
+    });
     await assert.rejects(sendAuthReplicaCheckpoint({
       agentHub: runtime.agentHub, deviceId: "windows",
       checkpoint: first, timeoutMs: 3_000

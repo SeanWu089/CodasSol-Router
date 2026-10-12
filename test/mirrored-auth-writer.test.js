@@ -31,7 +31,9 @@ async function fixture(testFn) {
       recipientPrivateKey: recipient.privateKey, store: standby
     });
     const createWriter = ({
-      agentHub = { enqueue: (_id, task) => receiver.receive(task.checkpoint) },
+      agentHub = { enqueue: (_id, task) => task.type === "auth-replica-commit"
+        ? receiver.commit(task.certificate)
+        : receiver.receive(task.checkpoint) },
       verifyFence = async () => true
     } = {}) => new MirroredAuthWriter({
       localAuthority: new LocalRefreshAuthority({ filePath: sourceFile }),
@@ -72,7 +74,9 @@ test("OAuth refresh and client registration are mirrored before a grant is retur
     const backup = JSON.parse(await readFile(standbyFile, "utf8"));
     assert.equal(source.authRevision, 3);
     assert.equal(backup.checkpoint.revision, 3);
+    assert.equal(backup.pending, null);
     assert.equal(source.lastReplicaDigest, backup.checkpoint.digest);
+    assert.equal(source.authCommitAckRevision, 3);
     assert.deepEqual(source.namespaces, backup.namespaces);
     assert.equal(Object.keys(backup.namespaces.refreshGrants.records).length, 2);
     assert.equal(backup.namespaces.oauthClients.records[registered.client_id].client_name,
@@ -121,8 +125,11 @@ test("lost ACK after durable standby write enters a fail-closed uncertainty stat
     }), { code: "AUTH_STATE_UNAVAILABLE" });
     assert.equal(sent, 1);
     await assert.rejects(readFile(sourceFile, "utf8"), { code: "ENOENT" });
-    assert.equal(JSON.parse(await readFile(standbyFile, "utf8"))
-      .checkpoint.revision, 1);
+    const follower = JSON.parse(await readFile(standbyFile, "utf8"));
+    assert.equal(follower.pending.revision, 1);
+    assert.equal(follower.checkpoint, undefined);
+    assert.equal(follower.namespaces, undefined,
+      "an unsigned/uncommitted pending state must not authorize tokens");
     // The next attempt cannot overwrite the standby's higher revision. This
     // requires manual/authoritative reconciliation before resuming writes.
     await assert.rejects(grants.issue({
@@ -146,7 +153,7 @@ test("losing external lease prevents a write, including loss after standby ACK",
     }), { code: "AUTH_STATE_UNAVAILABLE" });
     assert.equal(checks, 2);
     assert.equal(JSON.parse(await readFile(standbyFile, "utf8"))
-      .checkpoint.revision, 1);
+      .pending.revision, 1);
   });
 });
 
@@ -200,5 +207,62 @@ test("unchanged OAuth state receives a new, durable acknowledgement without fabr
     assert.deepEqual(source.namespaces.revocations.records, {});
     assert.deepEqual(backup.namespaces.revocations.records, {});
     assert.ok(Date.now() - backup.lastReplicaAckAt < 3_000);
+  });
+});
+
+test("crash after local durable write but before commit certificate cannot promote prepared grant", async () => {
+  await fixture(async ({ createWriter, sourceFile, standbyFile }) => {
+    let fences = 0;
+    const writer = createWriter({
+      verifyFence: async () => ++fences <= 2
+    });
+    const grants = new RefreshTokenRotation({
+      authority: writer.namespace("refreshGrants")
+    });
+    await assert.rejects(grants.issue({
+      subject: "owner", clientId: "chatgpt-client",
+      resource: issuer + "/mcp"
+    }), { code: "AUTH_STATE_UNAVAILABLE" });
+    const source = JSON.parse(await readFile(sourceFile, "utf8"));
+    const standby = JSON.parse(await readFile(standbyFile, "utf8"));
+    assert.equal(source.authRevision, 1);
+    assert.equal(source.authCommitAckRevision, undefined);
+    assert.equal(standby.pending.revision, 1);
+    assert.equal(standby.checkpoint, undefined);
+    await assert.rejects(writer.attestUnchangedState(), {
+      code: "AUTH_STATE_UNAVAILABLE"
+    });
+  });
+});
+
+test("lost COMMIT receipt is fail-closed even if standby already committed", async () => {
+  await fixture(async ({ createWriter, sourceFile, standbyFile, receiver }) => {
+    const writer = createWriter({
+      agentHub: { enqueue: async (_id, job) => {
+        if (job.type === "auth-replica-checkpoint") {
+          return receiver.receive(job.checkpoint);
+        }
+        await receiver.commit(job.certificate);
+        throw new Error("commit ACK lost");
+      } }
+    });
+    const grants = new RefreshTokenRotation({
+      authority: writer.namespace("refreshGrants")
+    });
+    await assert.rejects(grants.issue({
+      subject: "owner", clientId: "chatgpt-client",
+      resource: issuer + "/mcp"
+    }), { code: "AUTH_STATE_UNAVAILABLE" });
+    const source = JSON.parse(await readFile(sourceFile, "utf8"));
+    const follower = JSON.parse(await readFile(standbyFile, "utf8"));
+    assert.equal(source.authRevision, 1);
+    assert.equal(source.authCommitAckRevision, undefined);
+    assert.equal(follower.checkpoint.revision, 1);
+    assert.equal(follower.pending, null);
+    // Subsequent writes do not continue until an authorized reconciliation.
+    await assert.rejects(grants.issue({
+      subject: "owner", clientId: "chatgpt-client",
+      resource: issuer + "/mcp"
+    }), { code: "AUTH_STATE_UNAVAILABLE" });
   });
 });

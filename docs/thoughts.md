@@ -2,6 +2,45 @@
 
 ## v0.3 transport decision — lightweight Single Ingress (2026-10-10)
 
+### Two-phase OAuth replication and promotion gate — isolated tests (2026-10-12)
+
+- **Corrected a safety gap in the earlier mirroring prototype below:** a
+  standby's encrypted, signed checkpoint is now persisted as **PREPARED**,
+  not as authorization-visible committed state. Source-side grants are not
+  returned after mere prepare ACK. Instead, the fenced source durably
+  commits locally, then signs a distinct `auth-replica-commit` certificate
+  for that exact epoch/revision/digest; the standby verifies the certificate
+  with its pinned Ed25519 source key, atomically promotes the prepared
+  snapshot to **COMMITTED**, and acknowledges that committed revision.
+  Only after this ACK and a durable source-side acknowledgment does the
+  issuer return the OAuth mutation result. The receiver's internal
+  commit capability cannot be bypassed with an arbitrary `verified:true`
+  object.
+- **Fail-closed crash semantics:** source crash after prepare but before
+  local commit leaves only an unpublished prepared checkpoint; source
+  crash after local commit but before signed certificate also leaves
+  an unpublished prepared checkpoint; a lost prepare/commit receipt or
+  lost fencing blocks new writes until authorized reconciliation.
+  Previously committed revisions remain inspectable, but a pending
+  uncommitted revision blocks promotion. Same-host concurrent mutations
+  serialize across both stages and commit acknowledgment.
+- Added `AuthReplicaStore.preflightPromotion` and an opt-in
+  `createAuthPromotionGuard` used by `IngressManager.activationPreflight`
+  AFTER acquiring and verifying the ingress lease but BEFORE opening any
+  public endpoint. It requires fresh committed local state, **no pending
+  revision**, an externally verified exclusive claim, and an authoritative
+  confirmation that the exact local digest is the latest committed one.
+  The manager rechecks the lease before activation. Simulated tests show
+  that an uncommitted or stale standby cannot become ingress even if it
+  wins the mock lease; a committed replica requires external latest-proof.
+- **Not real consensus:** these tests use an explicitly injected mock
+  latest-commit authority/lease, not an actual ngrok provider or physically
+  independent Mac/Windows. There is currently NO production binding of
+  a provider-enforced latest-commit record, no reconciliation protocol
+  for uncertain commit, no automatic new-epoch/key migration, and no
+  OAuth service swap. The test gate is opt-in and must not be
+  considered proof of safe live failover.
+
 ### Synchronous encrypted OAuth state mirroring — isolated prototype (2026-10-12)
 
 - Added `auth-replica-checkpoint.js`: a **per-recipient encrypted** X25519

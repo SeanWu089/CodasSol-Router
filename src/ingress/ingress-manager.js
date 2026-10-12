@@ -29,7 +29,7 @@ export class IngressManager {
   #started = false;
 
   constructor({ installationId, domain, lease, adapter, enabled = false,
-    clock = () => Date.now() } = {}) {
+    clock = () => Date.now(), activationPreflight = null } = {}) {
     if (typeof installationId !== "string" || !installationId.trim()) {
       throw new TypeError("IngressManager requires an installationId");
     }
@@ -46,10 +46,15 @@ export class IngressManager {
         typeof adapter.start !== "function" || typeof adapter.stop !== "function") {
       throw new TypeError("Ingress adapter must enforce fenced activation and support start/stop");
     }
+    if (activationPreflight !== null &&
+        typeof activationPreflight !== "function") {
+      throw new TypeError("Ingress activation preflight must be a function");
+    }
     this.installationId = installationId;
     this.domain = url.origin;
     this.lease = lease;
     this.adapter = adapter;
+    this.activationPreflight = activationPreflight;
     this.enabled = enabled === true;
     this.clock = clock;
     this.state = this.enabled ? IngressState.STANDBY : IngressState.DISABLED;
@@ -145,6 +150,17 @@ export class IngressManager {
       if (!validClaim(claim, this.installationId, this.clock()) ||
           await this.lease.verify(claim) !== true) {
         throw new Error("invalid_or_unverified_lease");
+      }
+      // A standby must not activate its public endpoint merely because it
+      // obtained the ingress lease: committed OAuth state and an external
+      // latest-revision proof are separate safety requirements.
+      if (this.activationPreflight &&
+          await this.activationPreflight({ claim, domain: this.domain,
+            installationId: this.installationId }) !== true) {
+        throw new Error("ingress_activation_preflight_failed");
+      }
+      if (await this.lease.verify(claim) !== true) {
+        throw new Error("lease_lost_during_activation_preflight");
       }
       // The adapter itself must pass this claim to a fencing-enforcing
       // provider; checking it locally is NOT sufficient against partitions.

@@ -1,4 +1,7 @@
-import { sealAuthCheckpoint, sendAuthReplicaCheckpoint } from "./auth-replica-checkpoint.js";
+import {
+  sealAuthCheckpoint, sealAuthCommit,
+  sendAuthReplicaCheckpoint, sendAuthReplicaCommit
+} from "./auth-replica-checkpoint.js";
 
 const NAMESPACES = new Set(["refreshGrants", "oauthClients", "revocations"]);
 const empty = () => ({ records: {} });
@@ -25,6 +28,7 @@ function unavailable(reason) {
  * for live use. No automatic retry of ambiguous writes is permitted.
  */
 export class MirroredAuthWriter {
+  #serialized = Promise.resolve();
   constructor({
     localAuthority, agentHub, standbyDeviceId,
     issuer, source, target, signingKey, recipientKey,
@@ -68,11 +72,20 @@ export class MirroredAuthWriter {
     return this.transact("revocations", () => ({ attested: true }));
   }
 
-  async transact(namespace, change) {
+  transact(namespace, change) {
     if (!NAMESPACES.has(namespace) || typeof change !== "function") {
       throw new TypeError("Valid OAuth namespace and mutation required");
     }
-    return this.localAuthority.transact(async (local) => {
+    // Serialization spans BOTH the prepare and signed commit phases. A
+    // local file lock alone is too short: it is released before the peer
+    // can confirm the commit and mark the leader's ACK durable.
+    const pending = this.#serialized.then(() => this.#transact(namespace, change));
+    this.#serialized = pending.catch(() => {});
+    return pending;
+  }
+
+  async #transact(namespace, change) {
+    const prepared = await this.localAuthority.transact(async (local) => {
       if (await this.verifyFence(this.epoch) !== true) {
         throw unavailable("No externally verified exclusive ingress writer");
       }
@@ -85,6 +98,9 @@ export class MirroredAuthWriter {
             local.authRevision < 1 ||
             !local.namespaces || !local.lastReplicaDigest))) {
         throw unavailable("Auth state migration or repair required");
+      }
+      if (local.authRevision && local.authCommitAckRevision !== local.authRevision) {
+        throw unavailable("A previous replica commit remains unconfirmed");
       }
       const priorRevision = local.authRevision ?? 0;
       const revision = priorRevision + 1;
@@ -118,8 +134,43 @@ export class MirroredAuthWriter {
       local.namespaces = namespaces;
       local.authRevision = revision;
       local.lastReplicaDigest = ack.digest;
-      local.lastReplicaAckAt = this.clock();
-      return result;
+      // Do not report this as acknowledged/servable yet. The passive
+      // snapshot is only PREPARED until a post-commit certificate arrives.
+      return { result, revision, digest: ack.digest };
     });
+    if (await this.verifyFence(this.epoch) !== true) {
+      throw unavailable("Writer lost external fencing after local commit");
+    }
+    // This signature cannot exist until the local durable transaction
+    // above has returned. A standby MUST NOT promote mere prepared data.
+    const certificate = sealAuthCommit({
+      issuer: this.issuer, source: this.source, target: this.target,
+      epoch: this.epoch, revision: prepared.revision,
+      digest: prepared.digest, signingKey: this.signingKey,
+      clock: this.clock
+    });
+    try {
+      await sendAuthReplicaCommit({
+        agentHub: this.agentHub, deviceId: this.standbyDeviceId,
+        certificate, timeoutMs: this.timeoutMs
+      });
+      if (await this.verifyFence(this.epoch) !== true) {
+        throw unavailable("Writer lost external fencing before commit acknowledgment");
+      }
+      await this.localAuthority.transact((local) => {
+        if (local.authRevision !== prepared.revision ||
+            local.lastReplicaDigest !== prepared.digest ||
+            local.authCommitAckRevision >= prepared.revision) {
+          throw unavailable("Source commit acknowledgement state conflicts");
+        }
+        local.authCommitAckRevision = prepared.revision;
+        local.lastReplicaAckAt = this.clock();
+      });
+    } catch {
+      // Commit may have arrived but ACK was lost. Never retry blindly and
+      // never return a refresh token from an uncertain transaction.
+      throw unavailable("Replica commit phase is uncertain; recovery required");
+    }
+    return prepared.result;
   }
 }
