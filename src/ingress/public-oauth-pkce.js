@@ -40,7 +40,7 @@ export class PublicOAuthPkceGrants {
   constructor({
     issuer, keyId, privateKey, registeredClients,
     clock = () => Date.now(), codeTtlMs = 90_000,
-    accessTtlSeconds = 600
+    accessTtlSeconds = 600, refreshRotation = null
   } = {}) {
     this.issuer = normalizedIssuer(issuer);
     if (typeof keyId !== "string" || !/^[a-zA-Z0-9:_-]{8,160}$/.test(keyId) ||
@@ -71,6 +71,12 @@ export class PublicOAuthPkceGrants {
     this.clock = clock;
     this.codeTtlMs = codeTtlMs;
     this.accessTtlSeconds = accessTtlSeconds;
+    if (refreshRotation &&
+        (typeof refreshRotation.issue !== "function" ||
+         typeof refreshRotation.rotate !== "function")) {
+      throw new TypeError("Refresh rotation authority is not valid");
+    }
+    this.refreshRotation = refreshRotation;
   }
 
   #checkClient(clientId, redirectUri) {
@@ -78,15 +84,28 @@ export class PublicOAuthPkceGrants {
         !this.#clients.get(clientId)?.includes(redirectUri)) throw deny();
   }
 
+  validateAuthorizationRequest({
+    clientId, redirectUri, codeChallenge, codeChallengeMethod, resource,
+    responseType = "code", scope = "mcp:invoke"
+  } = {}) {
+    this.#checkClient(clientId, redirectUri);
+    if (!CHALLENGE.test(codeChallenge || "") ||
+        codeChallengeMethod !== "S256" ||
+        resource !== this.issuer + "/mcp" ||
+        responseType !== "code" || scope !== "mcp:invoke") throw deny();
+    return { clientId, redirectUri, codeChallenge, codeChallengeMethod, resource };
+  }
+
   issueCode({
     ownerApproved, subject, clientId, redirectUri,
     codeChallenge, codeChallengeMethod, resource
   } = {}) {
     if (ownerApproved !== true) throw deny("Owner approval required");
-    this.#checkClient(clientId, redirectUri);
-    if (typeof subject !== "string" || !subject.trim() || subject.length > 256 ||
-        !CHALLENGE.test(codeChallenge) || codeChallengeMethod !== "S256" ||
-        resource !== this.issuer + "/mcp") throw deny();
+    this.validateAuthorizationRequest({
+      clientId, redirectUri, codeChallenge, codeChallengeMethod, resource
+    });
+    if (typeof subject !== "string" || !subject.trim() ||
+        subject.length > 256) throw deny();
     // Limit the number of outstanding short-lived grants per service.
     const now = this.clock();
     for (const [hash, grant] of this.#codes) {
@@ -119,12 +138,16 @@ export class PublicOAuthPkceGrants {
     const expected = Buffer.from(grant.codeChallenge);
     if (candidate.length !== expected.length ||
         !timingSafeEqual(candidate, expected)) throw deny();
+    return this.#issueAccess(grant.subject, grant.resource);
+  }
+
+  #issueAccess(subject, resource) {
     const issuedAt = Math.floor(this.clock() / 1000);
     const header = base64(JSON.stringify({
       alg: "EdDSA", typ: "at+jwt", kid: this.keyId
     }));
     const payload = base64(JSON.stringify({
-      iss: this.issuer, aud: grant.resource, sub: grant.subject,
+      iss: this.issuer, aud: resource, sub: subject,
       scope: "mcp:invoke", iat: issuedAt, nbf: issuedAt,
       exp: issuedAt + this.accessTtlSeconds,
       jti: base64(randomBytes(18))
@@ -138,6 +161,40 @@ export class PublicOAuthPkceGrants {
       scope: "mcp:invoke"
       // No refresh_token until a durable cross-node replay-resistant store
       // and a revocation synchronization protocol are implemented.
+    };
+  }
+
+  async redeemCodeWithRefresh(params) {
+    if (!this.refreshRotation) {
+      throw new Error("Refresh-token authority is not configured");
+    }
+    const access = this.redeemCode(params);
+    // Access claims were just signed by this issuer; no untrusted token
+    // parsing is involved in this internal transition.
+    const claims = JSON.parse(
+      Buffer.from(access.access_token.split(".")[1], "base64url").toString("utf8")
+    );
+    const refresh = await this.refreshRotation.issue({
+      subject: claims.sub,
+      clientId: params.clientId,
+      resource: params.resource
+    });
+    return { ...access, refresh_token: refresh.refresh_token };
+  }
+
+  async exchangeRefreshToken({ refreshToken, clientId, resource } = {}) {
+    if (!this.refreshRotation || resource !== this.issuer + "/mcp") {
+      throw deny();
+    }
+    if (typeof clientId !== "string" || !this.#clients.has(clientId)) {
+      throw deny();
+    }
+    const refresh = await this.refreshRotation.rotate({
+      refreshToken, clientId, resource
+    });
+    return {
+      ...this.#issueAccess(refresh.subject, resource),
+      refresh_token: refresh.refresh_token
     };
   }
 }
