@@ -1,5 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { isIP } from "node:net";
+import { createPinnedPeerFetch } from "./peer-transport.js";
 import { RoutingDecisionError } from "./routing-policy.js";
 
 const PROTOCOL = 2;
@@ -24,6 +26,10 @@ function validatePeer(input, localDeviceId, allowInsecurePeers) {
     throw new Error(`Peer ${id} has invalid roots`);
   }
   const url = new URL(input.url);
+  if (input.connectAddress !== undefined &&
+      (typeof input.connectAddress !== "string" || !isIP(input.connectAddress) || url.protocol !== "https:")) {
+    throw new Error(`Peer ${id} connectAddress must be an IP address with HTTPS`);
+  }
   const loopback = ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname);
   if (url.protocol !== "https:" &&
     !(url.protocol === "http:" && (loopback || allowInsecurePeers))) {
@@ -34,7 +40,7 @@ function validatePeer(input, localDeviceId, allowInsecurePeers) {
     throw new Error(`Peer ${id} URL must be an origin without credentials, path or query`);
   }
   return {
-    id, token, url: url.origin,
+    id, token, url: url.origin, connectAddress: input.connectAddress || null,
     installationId: input.installationId || null,
     platform: platform || "unknown",
     label: input.label || id,
@@ -48,7 +54,9 @@ async function peerRequest(peer, endpoint, {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetchFn(`${peer.url}${endpoint}`, {
+    const transport = peer.connectAddress && fetchFn === fetch
+      ? createPinnedPeerFetch(peer.connectAddress) : fetchFn;
+    const response = await transport(`${peer.url}${endpoint}`, {
       method,
       redirect: "error",
       headers: {
@@ -117,7 +125,11 @@ export class PeerMesh {
     const pending = Promise.all([...this.peers.values()].map(async (peer) => {
       try {
         const info = await peerRequest(peer, "/_codassol/peer/info", {
-          fetchFn: this.fetchFn
+          // Tailnet TLS handshakes can take longer than the 2.5s used for
+          // ordinary metadata calls. Do not mark a healthy execution host
+          // offline merely because this identity/health probe needed 3-5s.
+          // A genuinely unreachable node still fails closed after 8s.
+          fetchFn: this.fetchFn, timeoutMs: 8000
         });
         if (info.protocol !== PROTOCOL || info.id !== peer.id ||
             !Array.isArray(info.roots) || typeof info.platform !== "string") {

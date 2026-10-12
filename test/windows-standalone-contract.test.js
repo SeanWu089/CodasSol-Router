@@ -23,6 +23,11 @@ test('standalone Router is Mac independent, identity pinned, loopback only', asy
   assert.match(router, /CODASSOL_STATE_DIR/);
   assert.match(router, /device-id\.txt/);
   assert.match(router, /CODASSOL_LOCAL_ROOTS/);
+  assert.match(router, /while \(\$true\)/);
+  assert.match(router, /router-supervisor\.log/);
+  assert.match(router, /routerHealthy = \(\$health\.ok -eq \$true\)/);
+  assert.match(router, /Retrying without changing state/);
+  assert.doesNotMatch(router, /Set-ExecutionPolicy|Stop-Process|Set-MpPreference/);
   assert.doesNotMatch(router, /ngrok|RemoteRouter|MacAddress/);
 });
 
@@ -54,10 +59,20 @@ test('packaging verifies private Node against upstream checksum and does not emb
   assert.match(packager, /SHASUMS256\.txt/);
   assert.match(packager, /expected.*actual/);
   assert.match(packager, /scripts\/windows\/standalone/);
+  assert.match(packager, /probe-mcp\.mjs/);
   assert.match(packager, /\.sha256/);
   assert.match(verify, /_codassol\/peer\/info/);
   assert.match(verify, /backendReachable/);
   assert.match(readme, /NOT accessible from other PCs/);
   assert.match(readme, /until independently authorized HTTPS ingress is configured/i);
   assert.doesNotMatch(packager, /ngrok-free\.dev|github_pat_|ghp_/);
+});
+
+test('Windows MCP smoke probe uses the independent Router and never prints tokens', async () => {
+  const probe = await read('probe-mcp.mjs');
+  assert.match(probe, /127\.0\.0\.1:17678\/mcp/);
+  assert.match(probe, /open_workspace/);
+  assert.match(probe, /exec_command/);
+  assert.match(probe, /EXEC_VERIFIED/);
+  assert.doesNotMatch(probe, /console\.log\([^\n]*token|process\.env\.PASSWORD/);
 });

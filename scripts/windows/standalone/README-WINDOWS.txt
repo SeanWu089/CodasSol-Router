@@ -17,6 +17,12 @@ INSTALL
      CodasSol scheduled tasks and archive old install folders, without
      deleting private credentials or other applications.
 
+  If PowerShell reports that an extracted script is not digitally signed,
+  verify the ZIP SHA-256 against the official release first. If you trust
+  that exact package and local policy allows it, use Windows file Properties
+  to unblock the original ZIP before re-extraction. Do not relax execution
+  policy, switch off antivirus, or bypass organization-managed restrictions.
+
 The default workspace permission root is your current Windows user profile.
 For another directory, run the script in a regular PowerShell session:
   .\install.ps1 -Roots 'C:\Users\YOUR_USERNAME|D:\PROJECTS'
@@ -26,7 +32,15 @@ HEALTH
   DevSpace: http://127.0.0.1:7676/healthz
   Router:   http://127.0.0.1:17678/_codassol/health
   The Router must report backendReachable=true.
+  For a real local MCP execution check after VERIFY.cmd passes:
+    %LOCALAPPDATA%\CodasSol\NodeV02Standalone\node\node.exe probe-mcp.mjs
+  Run that command from the extracted installation ZIP directory.
+  The check opens the current user's Desktop as a workspace and runs hostname
+  through the local Router; it does not print any DevSpace OAuth credentials.
   Logs: %LOCALAPPDATA%\CodasSol\NodeV02Standalone\logs
+  The Router and DevSpace scheduled tasks keep a supervisor active while
+  Windows is logged in. A crashed Router is restarted after a short delay;
+  an existing healthy Router is not duplicated if DevSpace alone is down.
 
 RELIABILITY AND SECURITY
   This package does NOT bypass enterprise antivirus or application policy.

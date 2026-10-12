@@ -144,3 +144,13 @@ converge when reachable peers exchange snapshots again. Peer list discovery,
 per-client pairing UI, revoke/reset flows and a genuinely push-driven UI are
 separate stages. A device discovered through another peer is **display-only**
 until that Router is explicitly authorized to route to it.
+
+### Optional private connection address
+
+A trusted HTTPS peer may set `connectAddress` to a verified IP when its private
+DNS name is unavailable to the calling Router. Keep `url` as the certificate
+DNS identity: TLS SNI, hostname validation and Host remain tied to that URL.
+The IP only changes socket resolution; tokens and `installationId` pins remain
+required as before. Invalid IPs, non-HTTPS pins and redirects are rejected.
+Do not commit deployment addresses or credentials. Verify the target IP through
+the trusted network inventory and repeat physical execution checks after changes.

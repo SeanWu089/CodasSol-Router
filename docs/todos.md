@@ -1,5 +1,24 @@
 # Todos
 
+## 2026-10-12 — SSH recovery checkpoint
+
+- [x] Restore physical Windows standalone services through their existing scheduled tasks and reverify Router health plus local MCP workspace-bound hostname execution.
+- [x] Implement and test optional per-peer HTTPS connection address to handle unavailable tailnet DNS without changing system DNS or disabling certificate checks.
+- [x] Deploy the Windows Router supervisor-only update and verify recovery after a scoped process crash, preserving DevSpace PID and device identity (2026-10-12).
+- [x] Deploy backed-up Mac peer transport/config and verify actual Mac→Windows workspace-bound execution after two automatic rollbacks (2026-10-12).
+- [x] Verify reverse Windows→Mac workspace-bound execution with exit 0 (2026-10-12), after an initial DEVICE_OFFLINE during peer recovery.
+- [ ] Repeat both physical directions after network/reboot recovery; current successful two-way calls do not prove sustained availability.
+
+- [x] Confirm Windows Tailscale Serve activation for Router 17678 and authenticated HTTPS installation identity (2026-10-12).
+- [ ] Stabilize and test already configured bidirectional peers; confirm the Mac Device Registry shows the independent Windows Router online separately from the old Agent. Preserve original state and rollback on failed readiness checks.
+- [ ] Prove separate Windows-hosted ChatGPT/MCP HTTPS ingress and client failover with Mac powered off; private Tailscale peer connectivity is necessary for LAN peer routing but not sufficient for this Phase 0 acceptance criterion.
+
+- [x] Verify physical Windows standalone preview.1 local deployment: installed worker PASS, Router 17678 and DevSpace 7676 health checks, CLI on disk, authenticated MCP `tools/list`, Windows Desktop `open_workspace`, and workspace-bound `exec_command` (2026-10-10). Do not mark Mac-offline ChatGPT reachability as complete.
+
+- [x] Add an always-running Windows standalone Router supervisor with guarded health checks and local error logs; maintain independent backend supervision. Mac contract regression passed, but physical Windows restart/reboot tests remain pending.
+- [ ] Rebuild the Windows standalone preview.2 candidate, verify its checksum, stage it on the physical PC, and run the installer through the normal approved Windows execution policy. Preserve legacy Agent, workspaces, and credentials until both local ports and execution are verified.
+- [ ] Investigate intermittent Tailscale/SSH disconnects on `SEANSWPC` using network/power and event-log evidence before assigning a cause; the Windows Tailscale service reports Running but link tests have repeatedly failed.
+
 - [x] Build a separately installed Windows Router v0.2 candidate with protected legacy install directories, supervised DevSpace startup, authenticated local Router identity verification and opt-in legacy archive/cleanup (no endpoint-protection evasion).
 - [ ] On physical Windows, install/test the standalone Node candidate, verify DevSpace CLI stays present after reboot, confirm port 17678 Router identity and backend execution, then optionally archive old tasks/install directories.
 - [ ] Provision authorized, resilient HTTPS ingress and mutually authenticated node peers to prove ChatGPT/other device → Windows while the Mac is offline; localhost-only Router is not an Internet-accessible client endpoint.
