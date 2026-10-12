@@ -33,6 +33,7 @@ export class MirroredAuthWriter {
     localAuthority, agentHub, standbyDeviceId,
     issuer, source, target, signingKey, recipientKey,
     epoch, verifyFence, clock = () => Date.now(),
+    witness = null, currentClaim = null,
     timeoutMs = 10_000
   } = {}) {
     if (typeof localAuthority?.transact !== "function" ||
@@ -41,13 +42,18 @@ export class MirroredAuthWriter {
         typeof standbyDeviceId !== "string" || !standbyDeviceId ||
         !Number.isSafeInteger(epoch) || epoch < 1 ||
         !Number.isSafeInteger(timeoutMs) || timeoutMs < 1000 ||
-        timeoutMs > 60_000) {
+        timeoutMs > 60_000 ||
+        (witness !== null && (
+          typeof witness.publishCommitted !== "function" ||
+          typeof witness.confirmLatestCommitted !== "function" ||
+          typeof currentClaim !== "function")) ||
+        (witness === null && currentClaim !== null)) {
       throw new TypeError("Mirrored auth needs durable local state, pinned peer and fencing");
     }
     Object.assign(this, {
       localAuthority, agentHub, standbyDeviceId,
       issuer, source, target, signingKey, recipientKey,
-      epoch, verifyFence, clock, timeoutMs
+      epoch, verifyFence, clock, timeoutMs, witness, currentClaim
     });
     // A caller cannot treat mirroring alone as distributed consensus.
     this.distributedSafe = false;
@@ -103,6 +109,7 @@ export class MirroredAuthWriter {
         throw unavailable("A previous replica commit remains unconfirmed");
       }
       const priorRevision = local.authRevision ?? 0;
+      const previousDigest = local.lastReplicaDigest ?? null;
       const revision = priorRevision + 1;
       const namespaces = structuredClone(local.namespaces || {
         refreshGrants: empty(), oauthClients: empty(), revocations: empty()
@@ -113,7 +120,7 @@ export class MirroredAuthWriter {
         issuer: this.issuer, source: this.source, target: this.target,
         signingKey: this.signingKey, recipientKey: this.recipientKey,
         epoch: this.epoch, revision,
-        previous: local.lastReplicaDigest ?? null,
+        previous: previousDigest,
         state: { version: 1, namespaces },
         clock: this.clock
       });
@@ -136,7 +143,7 @@ export class MirroredAuthWriter {
       local.lastReplicaDigest = ack.digest;
       // Do not report this as acknowledged/servable yet. The passive
       // snapshot is only PREPARED until a post-commit certificate arrives.
-      return { result, revision, digest: ack.digest };
+      return { result, revision, digest: ack.digest, previousDigest };
     });
     if (await this.verifyFence(this.epoch) !== true) {
       throw unavailable("Writer lost external fencing after local commit");
@@ -156,6 +163,36 @@ export class MirroredAuthWriter {
       });
       if (await this.verifyFence(this.epoch) !== true) {
         throw unavailable("Writer lost external fencing before commit acknowledgment");
+      }
+      // Optional external latest-commit witness. This is intentionally
+      // published ONLY after the standby has durably committed the signed
+      // checkpoint. A lost witness ACK is ambiguous and must freeze writes.
+      if (this.witness) {
+        const claim = await this.currentClaim();
+        if (!claim || claim.ownerId !== this.source ||
+            claim.epoch !== this.epoch) {
+          throw unavailable("Writer has no matching external witness claim");
+        }
+        const published = await this.witness.publishCommitted({
+          claim, checkpoint: {
+            revision: prepared.revision, digest: prepared.digest,
+            previous: prepared.previousDigest
+          }
+        });
+        if (published !== true) {
+          throw unavailable("Witness refused committed revision");
+        }
+        if (await this.witness.confirmLatestCommitted({
+          claim, installationId: this.source,
+          checkpoint: {
+            revision: prepared.revision, digest: prepared.digest
+          }
+        }) !== true) {
+          throw unavailable("Latest committed witness proof missing");
+        }
+        if (await this.verifyFence(this.epoch) !== true) {
+          throw unavailable("Writer lost external fencing after witness publication");
+        }
       }
       await this.localAuthority.transact((local) => {
         if (local.authRevision !== prepared.revision ||
