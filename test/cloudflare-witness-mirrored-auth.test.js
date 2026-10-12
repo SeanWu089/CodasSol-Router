@@ -14,6 +14,7 @@ import {
 import { LocalRefreshAuthority } from "../src/ingress/local-refresh-authority.js";
 import { MirroredAuthWriter } from "../src/ingress/mirrored-auth-writer.js";
 import { RefreshTokenRotation } from "../src/ingress/refresh-token-rotation.js";
+import { createWitnessCommitPublisher } from "../src/ingress/witness-commit-publisher.js";
 
 const issuer = "https://fixed-codas.example.test";
 const source = "mac-installation-12345";
@@ -22,7 +23,7 @@ const token = "a".repeat(64);
 const leaseSecret = "b".repeat(64);
 const hash = (s) => createHash("sha256").update(s).digest("hex");
 
-async function fixture(check, { witnessFailure = null } = {}) {
+async function fixture(check, { witnessFailure = null, publisherMode = false } = {}) {
   const temp = await mkdtemp(path.join(os.tmpdir(), "codas-witness-mirror-"));
   let state = emptyWitnessState();
   const signing = generateKeyPairSync("ed25519");
@@ -83,7 +84,11 @@ async function fixture(check, { witnessFailure = null } = {}) {
     recipientKey: recipient.publicKey,
     epoch: claim.epoch,
     verifyFence: () => witness.verify(claim),
-    witness, currentClaim: () => claim
+    ...(publisherMode ? {
+      commitPublisher: createWitnessCommitPublisher({
+        witness, getClaim: () => claim, installationId: source
+      })
+    } : { witness, currentClaim: () => claim })
   });
   const refresh = new RefreshTokenRotation({
     authority: writer.namespace("refreshGrants")
@@ -152,3 +157,16 @@ for (const failure of ["before", "after"]) {
     }, { witnessFailure: failure });
   });
 }
+
+test("callback-based witness publisher is not silently ignored or double-published", async () => {
+  await fixture(async ({ refresh, witness, requests, sourceFile }) => {
+    const issued = await refresh.issue({
+      subject: "owner", clientId: "chatgpt-client", resource: issuer + "/mcp"
+    });
+    assert.equal(issued.refresh_token.length, 64);
+    assert.equal(requests.filter((action) => action === "publish").length, 1);
+    assert.equal((await witness.status()).latestCommitted.revision, 1);
+    const stored = JSON.parse(await readFile(sourceFile, "utf8"));
+    assert.equal(stored.authCommitAckRevision, 1);
+  }, { publisherMode: true });
+});
