@@ -168,6 +168,7 @@ export async function runAgent({
   configStore = new AgentConfigStore(),
   stopSignal = () => false,
   replicaReceiver = null,
+  sleepFn = sleep,
   transport = process.env.CODASSOL_AGENT_TRANSPORT === "poll" ? "poll" : "sse"
 } = {}) {
   const config = await configStore.load();
@@ -221,6 +222,8 @@ export async function runAgent({
     });
     // An authenticated result POST already refreshes Router presence.
     heartbeatAt = Date.now() + AGENT_SSE_HEARTBEAT_INTERVAL_MS;
+    sseFailures = 0;
+    connectionFailures = 0;
   };
   const logError = (error) => process.stderr.write(
     `CodasSol Agent connection error: ${error instanceof Error ? error.message : String(error)}\n`
@@ -254,6 +257,8 @@ export async function runAgent({
           heartbeatInFlight = true;
           try {
             await heartbeat();
+            sseFailures = 0;
+            connectionFailures = 0;
             heartbeatAt = Date.now() + positiveHeartbeatIntervalMs;
           } catch (error) {
             if ([401, 403, 409].includes(error.status)) {
@@ -293,7 +298,7 @@ export async function runAgent({
             sseFailures = Date.now() - connectedAt > positiveHeartbeatIntervalMs
               ? 1 : sseFailures + 1;
             // Repeated stream failures back off; never add a polling request.
-            await sleep(reconnectDelayMs(sseFailures));
+            await sleepFn(reconnectDelayMs(sseFailures));
           }
           continue;
         } finally {
@@ -313,7 +318,7 @@ export async function runAgent({
     } catch (error) {
       if (error instanceof SseUnavailableError || [401, 403, 409].includes(error.status)) throw error;
       logError(error);
-      await sleep(reconnectDelayMs(++connectionFailures));
+      await sleepFn(reconnectDelayMs(++connectionFailures));
     }
   }
 }

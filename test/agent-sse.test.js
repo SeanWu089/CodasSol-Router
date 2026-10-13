@@ -376,3 +376,26 @@ test("SSE-only mode stops on unsupported or unauthorized ingress instead of poll
   }finally{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
  }
 });
+
+test("a confirmed task result resets accumulated reconnect failures without extra requests",async()=>{
+ let stopped=false;let connections=0;let current;const delays=[];let results=0;
+ const server=http.createServer((req,res)=>{
+  if(req.url==="/_codassol/agent/events"){
+   connections++;current=res;res.writeHead(200,{"content-type":"text/event-stream"});
+   res.write('event: ready\ndata: {"deviceId":"test"}\n\n');
+   if(connections===1)res.end();
+   else if(connections===2)res.write('event: job\ndata: {"job":{"id":"recovery","expiresAt":'+(Date.now()+10000)+',"payload":{"type":"unsupported"}}}\n\n');
+   else stopped=true;
+  }else if(req.url==="/_codassol/agent/result"){
+   results++;req.resume();res.writeHead(200,{"content-type":"application/json"});res.end('{"ok":true}');
+   setTimeout(()=>current.end(),20);
+  }else{res.writeHead(500);res.end();}
+ });
+ const port=await listen(server);
+ try{
+  await runAgent({configStore:{load:async()=>({routerUrl:`http://127.0.0.1:${port}`,agentToken:"test",device:{roots:[],capabilities:[]}})},
+   transport:"sse",stopSignal:()=>stopped,sleepFn:async ms=>{delays.push(ms);}});
+  assert.equal(results,1);assert.equal(connections,3);assert.equal(delays.length,2);
+  assert.ok(delays.every(ms=>ms>=1500&&ms<=2500),"confirmed recovery must reset the next retry to the first backoff step");
+ }finally{current?.end();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
+});

@@ -2,6 +2,8 @@
 
 ## 2026-10-13 — Free-plan-only request budget
 
+- [ ] Restore the Windows outbound task, deploy verified successful-ACK retry-counter reset, synchronize the Windows Git checkout and inspect sanitized current Windows connection diagnostics. Keep low-request policy; do not treat source tests as a completed live stability repair.
+
 - [x] Remove the redundant Windows public peer, deploy SSE-only execution without automatic polling fallback, suppress redundant startup/activity heartbeats, increase idle heartbeat interval and bound outage retries; physically verify execution and low background request counts.
 - [x] Add regression coverage for no startup heartbeat, no automatic polling/auth retry storm, and outbound-only peer suppression; 88 tests passed.
 - [ ] Track actual total monthly ingress requests and transfer against the free plan, including all clients, OAuth/discovery, useful tasks and reconnects; do not infer billed usage from a daemon-local counter. Preserve substantial capacity for real task execution.
