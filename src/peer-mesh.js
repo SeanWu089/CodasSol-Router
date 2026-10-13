@@ -27,6 +27,9 @@ function validatePeer(input, localDeviceId, allowInsecurePeers) {
     throw new Error(`Peer ${id} has invalid roots`);
   }
   const url = new URL(input.url);
+  if (url.hostname.toLowerCase().endsWith(".ts.net")) {
+    throw new Error("CodasSol does not permit Tailscale peer endpoints; use the authenticated outbound channel");
+  }
   if (input.connectAddress !== undefined &&
       (typeof input.connectAddress !== "string" || !isIP(input.connectAddress) || url.protocol !== "https:")) {
     throw new Error(`Peer ${id} connectAddress must be an IP address with HTTPS`);

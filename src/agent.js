@@ -3,6 +3,8 @@ import process from "node:process";
 import { pathToFileURL } from "node:url";
 import { AgentConfigStore } from "./agent-config.js";
 import { DevSpaceLocalOAuth } from "./devspace-local-auth.js";
+import { consumeAgentEvents, reconnectDelayMs, SseUnavailableError } from "./agent-sse.js";
+import { AGENT_SSE_HEARTBEAT_INTERVAL_MS } from "./agent-timing.js";
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -70,6 +72,7 @@ export async function enrollAgent({
   routerUrl,
   pairingToken,
   deviceId = os.hostname(),
+  installationId,
   label = os.hostname(),
   roots = [],
   devspaceBaseUrl = "http://127.0.0.1:7676",
@@ -80,6 +83,7 @@ export async function enrollAgent({
     token: pairingToken,
     body: {
       id: deviceId,
+      ...(installationId ? { installationId } : {}),
       label,
       platform: process.platform,
       roots,
@@ -153,25 +157,143 @@ async function executeHttpJob(configStore, config, payload) {
   };
 }
 
+export function isExpiredAgentJob(job, now = Date.now()) {
+  // Legacy v0.1/v0.2 Routers did not send a deadline. Retain compatibility
+  // during rolling upgrades; new Routers always attach expiresAt.
+  return job && Object.hasOwn(job, "expiresAt") &&
+    (!Number.isSafeInteger(job.expiresAt) || now >= job.expiresAt);
+}
+
 export async function runAgent({
   configStore = new AgentConfigStore(),
-  stopSignal = () => false
+  stopSignal = () => false,
+  replicaReceiver = null,
+  transport = process.env.CODASSOL_AGENT_TRANSPORT === "poll" ? "poll" : "sse"
 } = {}) {
   const config = await configStore.load();
+  const heartbeat = () => routerJson(`${config.routerUrl}/_codassol/agent/heartbeat`, {
+    token: config.agentToken,
+    body: {
+      roots: config.device.roots,
+      capabilities: config.device.capabilities
+    },
+    timeoutMs: 10_000
+  });
+  const reportJob = async (job) => {
+    if (isExpiredAgentJob(job)) {
+      // The Router has already rejected the caller's request, so there is
+      // nothing to acknowledge. Never run a late file mutation or command.
+      process.stderr.write("CodasSol Agent discarded expired job before execution\n");
+      return;
+    }
+    let body;
+    try {
+      let result;
+      if (job.payload?.type === "auth-replica-checkpoint" ||
+          job.payload?.type === "auth-replica-commit") {
+        const commit = job.payload.type === "auth-replica-commit";
+        const handler = commit ? replicaReceiver?.commit : replicaReceiver?.receive;
+        if (typeof handler !== "function") {
+          throw Object.assign(new Error("Replica receiver not configured"), {
+            code: "AUTH_REPLICA_DISABLED"
+          });
+        }
+        // Replica jobs can never be forwarded to the local DevSpace. The
+        // receiver pins signer, recipient, installation and ordered state.
+        result = await handler.call(replicaReceiver,
+          commit ? job.payload.certificate : job.payload.checkpoint);
+      } else {
+        result = await executeHttpJob(configStore, config, job.payload);
+      }
+      body = { jobId: job.id, ok: true, result };
+    } catch (error) {
+      body = {
+        jobId: job.id,
+        ok: false,
+        error: {
+          code: error?.code || "AGENT_JOB_FAILED",
+          message: error instanceof Error ? error.message : String(error)
+        }
+      };
+    }
+    await routerJson(`${config.routerUrl}/_codassol/agent/result`, {
+      token: config.agentToken, body, timeoutMs: 10_000
+    });
+  };
+  const logError = (error) => process.stderr.write(
+    `CodasSol Agent connection error: ${error instanceof Error ? error.message : String(error)}\n`
+  );
+  // 60-second HTTP heartbeats would cost 43,200 requests per 30-day month
+  // PER device. Keep one-way SSE framing cheap and positively confirm
+  // Agent liveness at a quota-friendly interval instead.
+  const positiveHeartbeatIntervalMs = AGENT_SSE_HEARTBEAT_INTERVAL_MS;
   let heartbeatAt = 0;
+  let sseFailures = 0;
+  let sseUnavailable = transport === "poll";
 
   while (!stopSignal()) {
     try {
       if (Date.now() >= heartbeatAt) {
-        await routerJson(`${config.routerUrl}/_codassol/agent/heartbeat`, {
-          token: config.agentToken,
-          body: {
-            roots: config.device.roots,
-            capabilities: config.device.capabilities
-          },
-          timeoutMs: 10_000
-        });
-        heartbeatAt = Date.now() + 10_000;
+        await heartbeat();
+        // ~2,880 authenticated heartbeat POSTs per 30 days per online node.
+        heartbeatAt = Date.now() + positiveHeartbeatIntervalMs;
+      }
+
+      if (!sseUnavailable) {
+        const controller = new AbortController();
+        const stopTimer = setInterval(() => {
+          if (stopSignal()) controller.abort();
+        }, 1_000);
+        stopTimer.unref?.();
+        let heartbeatInFlight = false;
+        const heartbeatTimer = setInterval(async () => {
+          if (heartbeatInFlight || Date.now() < heartbeatAt) return;
+          heartbeatInFlight = true;
+          try {
+            await heartbeat();
+            heartbeatAt = Date.now() + positiveHeartbeatIntervalMs;
+          } catch (error) {
+            heartbeatAt = Date.now() + 60_000;
+            logError(error);
+          } finally {
+            heartbeatInFlight = false;
+          }
+        }, 5_000);
+        heartbeatTimer.unref?.();
+        const connectedAt = Date.now();
+        try {
+          await consumeAgentEvents({
+            url: `${config.routerUrl}/_codassol/agent/events`,
+            token: config.agentToken,
+            signal: controller.signal,
+            onJob: reportJob
+          });
+          if (stopSignal()) break;
+          throw new Error("SSE connection ended unexpectedly");
+        } catch (error) {
+          if (stopSignal()) break;
+          if (error instanceof SseUnavailableError) {
+            sseUnavailable = true;
+          } else {
+            logError(error);
+            sseFailures = Date.now() - connectedAt > 60_000
+              ? 1 : sseFailures + 1;
+            // A few failed SSE attempts may indicate an intermediary that
+            // cannot stream. Try one legacy poll, then retry SSE.
+            if (sseFailures >= 3 && ![401, 403, 409].includes(error.status)) {
+              const polled = await routerJson(`${config.routerUrl}/_codassol/agent/poll`, {
+                token: config.agentToken, body: {}, timeoutMs: 32_000
+              });
+              if (polled.job) await reportJob(polled.job);
+            }
+            await sleep(reconnectDelayMs(sseFailures));
+          }
+          continue;
+        } finally {
+          controller.abort();
+          clearInterval(stopTimer);
+          clearInterval(heartbeatTimer);
+        }
       }
 
       const polled = await routerJson(`${config.routerUrl}/_codassol/agent/poll`, {
@@ -180,32 +302,9 @@ export async function runAgent({
         timeoutMs: 32_000
       });
       if (!polled.job) continue;
-
-      try {
-        const result = await executeHttpJob(configStore, config, polled.job.payload);
-        await routerJson(`${config.routerUrl}/_codassol/agent/result`, {
-          token: config.agentToken,
-          body: { jobId: polled.job.id, ok: true, result },
-          timeoutMs: 10_000
-        });
-      } catch (error) {
-        await routerJson(`${config.routerUrl}/_codassol/agent/result`, {
-          token: config.agentToken,
-          body: {
-            jobId: polled.job.id,
-            ok: false,
-            error: {
-              code: error?.code || "AGENT_JOB_FAILED",
-              message: error instanceof Error ? error.message : String(error)
-            }
-          },
-          timeoutMs: 10_000
-        });
-      }
+      await reportJob(polled.job);
     } catch (error) {
-      process.stderr.write(
-        `CodasSol Agent connection error: ${error instanceof Error ? error.message : String(error)}\n`
-      );
+      logError(error);
       await sleep(2_000);
     }
   }

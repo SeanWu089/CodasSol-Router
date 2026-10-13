@@ -1,5 +1,13 @@
 # Todos
 
+## 2026-10-13 — Transport correction (takes precedence)
+
+- [x] Back up and remove the production Mac CodasSol Tailscale peer; preserve unrelated user network settings.
+- [x] Port and deploy existing SSE delivery on the Mac production Router, test enrollment installation pin/retained workspace ownership, verify local/public health, and prepare a private Windows foreground bootstrap ZIP without credentials.
+- [ ] Use the existing outbound authenticated SSE independent-Router implementation for Windows enrollment/execution; verify with Tailscale absent/disabled for the product path. Do not enable a VPN fallback.
+- [ ] Through a non-Tailscale access path, remove only CodasSol's reciprocal Windows peer and its port-17678 Tailscale Serve mapping after inspecting other mappings.
+- [ ] Revalidate cross-device execution and public ingress takeover against the original no-Tailscale requirement. Historical tailnet checks below do not complete this requirement.
+
 ## 2026-10-12 — Native Windows connector and backend recovery
 
 - [x] Fix reproduced PowerShell stderr-triggered DevSpace restarts; deploy with ownership checks, backup and rollback, verify expected failed commands preserve the backend and subsequent real connector execution succeeds.

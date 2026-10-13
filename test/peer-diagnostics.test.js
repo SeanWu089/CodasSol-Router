@@ -15,6 +15,12 @@ function mesh(fetchFn) {
   return new PeerMesh({ runtime: { localDeviceId: 'mac', devices: new DeviceRegistry(), catalog: { observe: async () => {}, get: () => null } }, peers: [peer], fetchFn });
 }
 
+test('product transport refuses Tailscale peer endpoints before registering a route', () => {
+  const runtime = { localDeviceId: 'mac', devices: new DeviceRegistry() };
+  assert.throws(() => new PeerMesh({ runtime, peers: [{ ...peer, url: 'https://windows.example.ts.net' }] }), /does not permit Tailscale/);
+  assert.equal(runtime.devices.get('windows'), null);
+});
+
 test('peer failure diagnostics distinguish causes, remain fail-closed and exclude raw secrets', async (t) => {
   const cases = [
     ['DNS_FAILED', () => { throw Object.assign(new Error(peer.token), { cause: { code: 'ENOTFOUND' } }); }],
