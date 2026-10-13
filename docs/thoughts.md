@@ -1,5 +1,7 @@
 # Thoughts
 
+- 2026-10-13 confirmed constraint: treat the existing ngrok Free plan as the only available plan. Do not propose paid upgrades as the fix for wasteful background traffic. Prefer one authenticated SSE channel, changes/results on demand, budgeted positive heartbeats and bounded reconnects. Confirmed Windows development location is `C:\Users\ASUS\Desktop\PROJECTS\CodasSol-Router`.
+
 - Position CodasSol as a **transparent workspace router**, not as another general remote desktop or all-in-one AI runtime.
 - Product headline: **Route the Project, Not Devices.** The user/agent addresses the project or workspace; the Router resolves the physical machine.
 - Keep DevSpace as the execution layer; keep CodasSol focused on discovery, routing, workspace affinity, credentials, and policy.

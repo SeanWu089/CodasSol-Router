@@ -1,5 +1,13 @@
 # Todos
 
+## 2026-10-13 — Free-plan-only request budget
+
+- [x] Remove the redundant Windows public peer, deploy SSE-only execution without automatic polling fallback, suppress redundant startup/activity heartbeats, increase idle heartbeat interval and bound outage retries; physically verify execution and low background request counts.
+- [x] Add regression coverage for no startup heartbeat, no automatic polling/auth retry storm, and outbound-only peer suppression; 88 tests passed.
+- [ ] Track actual total monthly ingress requests and transfer against the free plan, including all clients, OAuth/discovery, useful tasks and reconnects; do not infer billed usage from a daemon-local counter. Preserve substantial capacity for real task execution.
+- [ ] Longer stability/reconnection and multi-client tests; the bounded request observation is not a continuous uptime guarantee.
+- [ ] Finish Git clone + local checkpoint sync to `C:\Users\ASUS\Desktop\PROJECTS\CodasSol-Router` and verify Windows checkout commit and tests.
+
 ## 2026-10-13 — Transport correction (takes precedence)
 
 - [x] Back up and remove the production Mac CodasSol Tailscale peer; preserve unrelated user network settings.

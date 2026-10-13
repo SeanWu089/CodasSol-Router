@@ -17,6 +17,7 @@ $env:CODASSOL_LISTEN_HOST = '127.0.0.1'
 $env:CODASSOL_LISTEN_PORT = '17678'
 $env:CODASSOL_BACKEND_HOST = '127.0.0.1'
 $env:CODASSOL_BACKEND_PORT = '7676'
+$env:CODASSOL_OUTBOUND_ONLY = '1'
 
 # Remain alive when an already running Router serves the loopback port. If it
 # later exits, this Scheduled Task must be able to start its own private Router.

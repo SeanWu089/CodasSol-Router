@@ -1,7 +1,7 @@
 // Shared between Router and Agent. Changing the positive heartbeat interval
 // without changing presence TTL would produce false-offline device status.
-export const AGENT_SSE_HEARTBEAT_INTERVAL_MS = 15 * 60_000;
-export const AGENT_SSE_PRESENCE_TTL_MS = 20 * 60_000;
+export const AGENT_SSE_HEARTBEAT_INTERVAL_MS = 30 * 60_000;
+export const AGENT_SSE_PRESENCE_TTL_MS = 40 * 60_000;
 
 export function estimatedIdleHeartbeatRequests({
   devices = 1, days = 30,

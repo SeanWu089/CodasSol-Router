@@ -219,6 +219,8 @@ export async function runAgent({
     await routerJson(`${config.routerUrl}/_codassol/agent/result`, {
       token: config.agentToken, body, timeoutMs: 10_000
     });
+    // An authenticated result POST already refreshes Router presence.
+    heartbeatAt = Date.now() + AGENT_SSE_HEARTBEAT_INTERVAL_MS;
   };
   const logError = (error) => process.stderr.write(
     `CodasSol Agent connection error: ${error instanceof Error ? error.message : String(error)}\n`
@@ -230,12 +232,13 @@ export async function runAgent({
   let heartbeatAt = 0;
   let sseFailures = 0;
   let sseUnavailable = transport === "poll";
+  let connectionFailures = 0;
 
   while (!stopSignal()) {
     try {
-      if (Date.now() >= heartbeatAt) {
+      if (sseUnavailable && Date.now() >= heartbeatAt) {
         await heartbeat();
-        // ~2,880 authenticated heartbeat POSTs per 30 days per online node.
+        // Legacy explicit polling only; SSE registration needs no extra POST.
         heartbeatAt = Date.now() + positiveHeartbeatIntervalMs;
       }
 
@@ -253,7 +256,11 @@ export async function runAgent({
             await heartbeat();
             heartbeatAt = Date.now() + positiveHeartbeatIntervalMs;
           } catch (error) {
-            heartbeatAt = Date.now() + 60_000;
+            if ([401, 403, 409].includes(error.status)) {
+              controller.abort(error);
+              return;
+            }
+            heartbeatAt = Date.now() + 5 * 60_000;
             logError(error);
           } finally {
             heartbeatInFlight = false;
@@ -266,26 +273,26 @@ export async function runAgent({
             url: `${config.routerUrl}/_codassol/agent/events`,
             token: config.agentToken,
             signal: controller.signal,
+            onReady: () => {
+              heartbeatAt = Date.now() + positiveHeartbeatIntervalMs;
+              connectionFailures = 0;
+            },
             onJob: reportJob
           });
           if (stopSignal()) break;
           throw new Error("SSE connection ended unexpectedly");
         } catch (error) {
           if (stopSignal()) break;
+          if ([401, 403, 409].includes(controller.signal.reason?.status)) throw controller.signal.reason;
           if (error instanceof SseUnavailableError) {
-            sseUnavailable = true;
+            // An unsupported endpoint must not silently become paid polling.
+            throw error;
           } else {
+            if ([401, 403, 409].includes(error.status)) throw error;
             logError(error);
-            sseFailures = Date.now() - connectedAt > 60_000
+            sseFailures = Date.now() - connectedAt > positiveHeartbeatIntervalMs
               ? 1 : sseFailures + 1;
-            // A few failed SSE attempts may indicate an intermediary that
-            // cannot stream. Try one legacy poll, then retry SSE.
-            if (sseFailures >= 3 && ![401, 403, 409].includes(error.status)) {
-              const polled = await routerJson(`${config.routerUrl}/_codassol/agent/poll`, {
-                token: config.agentToken, body: {}, timeoutMs: 32_000
-              });
-              if (polled.job) await reportJob(polled.job);
-            }
+            // Repeated stream failures back off; never add a polling request.
             await sleep(reconnectDelayMs(sseFailures));
           }
           continue;
@@ -304,8 +311,9 @@ export async function runAgent({
       if (!polled.job) continue;
       await reportJob(polled.job);
     } catch (error) {
+      if (error instanceof SseUnavailableError || [401, 403, 409].includes(error.status)) throw error;
       logError(error);
-      await sleep(2_000);
+      await sleep(reconnectDelayMs(++connectionFailures));
     }
   }
 }

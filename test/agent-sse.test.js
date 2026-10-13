@@ -16,11 +16,11 @@ import { createRouterRuntime } from "../src/runtime.js";
 import { createRouterServer } from "../src/server.js";
 
 test("SSE heartbeat accounting fits free-tier headroom unlike 60-second POSTs", () => {
-  assert.equal(AGENT_SSE_HEARTBEAT_INTERVAL_MS, 15 * 60_000);
+  assert.equal(AGENT_SSE_HEARTBEAT_INTERVAL_MS, 30 * 60_000);
   assert.ok(AGENT_SSE_PRESENCE_TTL_MS >
     AGENT_SSE_HEARTBEAT_INTERVAL_MS);
-  assert.equal(estimatedIdleHeartbeatRequests({ devices: 1 }), 2_880);
-  assert.equal(estimatedIdleHeartbeatRequests({ devices: 4 }), 11_520);
+  assert.equal(estimatedIdleHeartbeatRequests({ devices: 1 }), 1_440);
+  assert.equal(estimatedIdleHeartbeatRequests({ devices: 4 }), 5_760);
   assert.equal(estimatedIdleHeartbeatRequests({
     devices: 1, heartbeatIntervalMs: 60_000
   }), 43_200);
@@ -77,7 +77,7 @@ test("SSE client parses chunk-split jobs and ignores comments and unknown events
   ]);
 });
 
-test("SSE unsupported response uses legacy fallback without retrying authorization failures", async () => {
+test("SSE unsupported responses are distinguishable from authorization failures", async () => {
   await assert.rejects(
     consumeAgentEvents({
       url: "http://localhost", token: "token", onJob: () => {},
@@ -92,8 +92,8 @@ test("SSE unsupported response uses legacy fallback without retrying authorizati
     }),
     (error) => error.status === 401
   );
-  assert.ok(reconnectDelayMs(10, () => 0) >= 20_000);
-  assert.ok(reconnectDelayMs(10, () => 1) <= 40_000);
+  assert.ok(reconnectDelayMs(10, () => 0) >= 11 * 60_000);
+  assert.ok(reconnectDelayMs(10, () => 1) <= 19 * 60_000);
 });
 
 test("SSE events pass through a local streaming HTTP reverse proxy", async () => {
@@ -209,7 +209,7 @@ test("AgentHub shutdown closes only the live SSE consumers", async () => {
   unsubscribe();
 });
 
-test("SSE 15-minute heartbeat remains online without extending legacy Agent TTL", () => {
+test("SSE budgeted heartbeat remains online without extending legacy Agent TTL", () => {
   let clock = 0;
   const devices = new DeviceRegistry({ clock: () => clock, heartbeatTtlMs: 30_000 });
   devices.register({
@@ -342,4 +342,37 @@ test("Router SSE authenticates Agent, delivers scoped jobs, accepts result POST 
     await new Promise((resolve) => backend.close(resolve));
     await rm(stateDir, { recursive: true, force: true });
   }
+});
+
+test("SSE startup and result acknowledgement need no extra heartbeat POST", async () => {
+ let stopped=false;let events;const counts={};
+ const server=http.createServer((req,res)=>{
+  counts[req.url]=(counts[req.url]||0)+1;
+  if(req.url==="/_codassol/agent/events"){
+   events=res;res.writeHead(200,{"content-type":"text/event-stream"});
+   res.write('event: ready\ndata: {"deviceId":"test"}\n\n');
+   res.write('event: job\ndata: {"job":{"id":"one","expiresAt":'+(Date.now()+10000)+',"payload":{"type":"unsupported"}}}\n\n');
+  }else if(req.url==="/_codassol/agent/result"){
+   req.resume();res.writeHead(200,{"content-type":"application/json"});res.end('{"ok":true}');
+   stopped=true;
+  }else{req.resume();res.writeHead(200,{"content-type":"application/json"});res.end('{"ok":true}');}
+ });
+ const port=await listen(server);
+ try{
+  await runAgent({configStore:{load:async()=>({routerUrl:`http://127.0.0.1:${port}`,agentToken:"test",device:{roots:[],capabilities:[]}})},stopSignal:()=>stopped,transport:"sse"});
+  assert.equal(counts["/_codassol/agent/events"],1);
+  assert.equal(counts["/_codassol/agent/result"],1);
+  assert.equal(counts["/_codassol/agent/heartbeat"]||0,0);
+  assert.equal(counts["/_codassol/agent/poll"]||0,0);
+ }finally{events?.end();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
+});
+test("SSE-only mode stops on unsupported or unauthorized ingress instead of polling/retrying",async()=>{
+ for(const status of [404,401,403,409]){
+  const paths=[];const server=http.createServer((req,res)=>{paths.push(req.url);res.writeHead(status);res.end();});
+  const port=await listen(server);
+  try{
+   await assert.rejects(runAgent({configStore:{load:async()=>({routerUrl:`http://127.0.0.1:${port}`,agentToken:"test",device:{roots:[],capabilities:[]}})},transport:"sse"}));
+   assert.deepEqual(paths,["/_codassol/agent/events"]);
+  }finally{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
+ }
 });

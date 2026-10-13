@@ -21,6 +21,19 @@ test('product transport refuses Tailscale peer endpoints before registering a ro
   assert.equal(runtime.devices.get('windows'), null);
 });
 
+test('outbound-only mode never loads or probes legacy peer configuration', async () => {
+  let requests = 0;
+  const runtime = { localDeviceId: 'mac', devices: new DeviceRegistry() };
+  const m = await PeerMesh.load(runtime, { outboundOnly: true, peersFile: '/unreadable/legacy-peers.json' }, {
+    fetchFn: async () => { requests++; throw new Error('Unexpected HTTP request'); }
+  });
+  m.start();
+  await m.refresh();
+  assert.equal(m.peers.size, 0);
+  assert.equal(m.timer, null);
+  assert.equal(requests, 0);
+});
+
 test('peer failure diagnostics distinguish causes, remain fail-closed and exclude raw secrets', async (t) => {
   const cases = [
     ['DNS_FAILED', () => { throw Object.assign(new Error(peer.token), { cause: { code: 'ENOTFOUND' } }); }],

@@ -25,7 +25,7 @@ if(process.argv.includes('--enroll')){
  const peers=path.join(state,'peers.json');
  if(fs.existsSync(peers)){
   const previous=JSON.parse(fs.readFileSync(peers,'utf8'));
-  const keep=previous.filter(p=>!new URL(p.url).hostname.endsWith('.ts.net'));
+  const keep=previous.filter(p=>!new URL(p.url).hostname.endsWith('.ts.net') && new URL(p.url).origin!==origin.origin);
   if(keep.length!==previous.length){
    fs.copyFileSync(peers,peers+'.before-outbound-'+Date.now(),fs.constants.COPYFILE_EXCL);
    const temp=peers+'.outbound-pending';fs.writeFileSync(temp,JSON.stringify(keep,null,2),{flag:'wx',mode:0o600});fs.renameSync(temp,peers);

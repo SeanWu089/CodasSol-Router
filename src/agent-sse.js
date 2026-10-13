@@ -10,7 +10,7 @@ export class SseUnavailableError extends Error {
 }
 
 export function reconnectDelayMs(attempt, random = Math.random) {
-  const base = Math.min(30_000, 1_000 * 2 ** Math.min(attempt, 5));
+  const base = Math.min(15 * 60_000, 1_000 * 2 ** Math.min(attempt, 10));
   return Math.round(base * (0.75 + 0.5 * random()));
 }
 

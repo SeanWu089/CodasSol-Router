@@ -108,6 +108,7 @@ export class PeerMesh {
   }
 
   static async load(runtime, config, options = {}) {
+    if (config.outboundOnly) return new PeerMesh({ runtime, peers: [], ...options });
     const filename = config.peersFile || path.join(runtime.stateDir, "peers.json");
     let peers = [];
     try {
