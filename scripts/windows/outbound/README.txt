@@ -13,10 +13,10 @@ Ctrl+C stops the foreground outbound channel. Rerun the same script to resume.
 
 Pairing retains the independent Router's device and installation IDs, uses
 a separate outbound-agent.json, and permits only the user's Desktop root.
-Windows .ts.net peers are backed up and removed; the known owned Router
-The redundant peer pointing to the public ingress is also removed; standalone
-outbound-only mode ignores old peer configuration rather than probing it.
-Scheduled Task is restarted to reload them. Other Node processes, DevSpace,
+Windows .ts.net peers and the redundant public-ingress peer are backed up
+and removed. The owned Router Scheduled Task is restarted to reload them.
+Standalone outbound-only mode ignores legacy peer configuration.
+Other Node processes, DevSpace,
 legacy Agent state, user VPN software and network settings are preserved.
 The old CodasSol Tailscale Serve mapping still requires scoped inspection
 and cleanup; this channel does not connect to it. Mac-offline ingress

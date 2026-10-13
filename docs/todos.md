@@ -6,7 +6,7 @@
 - [x] Add regression coverage for no startup heartbeat, no automatic polling/auth retry storm, and outbound-only peer suppression; 88 tests passed.
 - [ ] Track actual total monthly ingress requests and transfer against the free plan, including all clients, OAuth/discovery, useful tasks and reconnects; do not infer billed usage from a daemon-local counter. Preserve substantial capacity for real task execution.
 - [ ] Longer stability/reconnection and multi-client tests; the bounded request observation is not a continuous uptime guarantee.
-- [ ] Finish Git clone + local checkpoint sync to `C:\Users\ASUS\Desktop\PROJECTS\CodasSol-Router` and verify Windows checkout commit and tests.
+- [x] Clone Git history and import the local checkpoint into `C:\Users\ASUS\Desktop\PROJECTS\CodasSol-Router`; preserve origin, branch and workspace bindings, verify a clean checkout and 33 passing Windows-native transport/session tests.
 
 ## 2026-10-13 — Transport correction (takes precedence)
 
