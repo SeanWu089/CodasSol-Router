@@ -1,3 +1,15 @@
+# Windows v0.2.0 standalone preview.3 (2026-10-13, source preview)
+
+- Reset accumulated SSE failure backoff following a sustained (>=60s)
+  authenticated event stream. Short-lived network failures still back off
+  exponentially, and unsupported/unauthorized endpoints still fail closed.
+- Introduce optional standalone File Sentinel v0.1.0: local file metadata,
+  SHA-256 baselines, daily Markdown/JSONL logs and user-scoped auto-start.
+- Add a default-unchecked graphical checkbox to the Windows standalone installer;
+  unattended installs may explicitly opt in or skip the component prompt.
+- Packaged and Mac-tested only. Physical Windows upgrade and sustained
+  reconnection/boot checks are pending because Windows is currently offline.
+
 # Changelog
 
 ## Windows standalone v0.2 preview — install candidate (2026-10-10)

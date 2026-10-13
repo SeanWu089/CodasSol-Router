@@ -1,4 +1,8 @@
-param([string]$Roots = '')
+param(
+    [string]$Roots = '',
+    [switch]$InstallFileSentinel,
+    [switch]$SkipSentinelPrompt
+)
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
@@ -17,6 +21,41 @@ $devspaceConfig = Join-Path $env:USERPROFILE '.devspace\config.jsonc'
 $auth = Join-Path $env:USERPROFILE '.devspace\auth.json'
 $taskDevspace = 'CodasSol Standalone V02 DevSpace'
 $taskRouter = 'CodasSol Standalone V02 Router'
+
+function Select-OptionalFileSentinel {
+    if (-not [Environment]::UserInteractive) { return $false }
+    try {
+        Add-Type -AssemblyName System.Windows.Forms
+        Add-Type -AssemblyName System.Drawing
+        $form = New-Object System.Windows.Forms.Form
+        $form.Text = 'CodasSol - Optional Components'
+        $form.Size = New-Object System.Drawing.Size(450, 175)
+        $form.StartPosition = 'CenterScreen'
+        $form.FormBorderStyle = 'FixedDialog'
+        $form.MaximizeBox = $false
+        $form.MinimizeBox = $false
+        $box = New-Object System.Windows.Forms.CheckBox
+        $box.Text = 'Install File Sentinel (optional, read-only)'
+        $box.SetBounds(20, 15, 400, 28)
+        $box.Checked = $false
+        $label = New-Object System.Windows.Forms.Label
+        $label.Text = 'Logs file changes locally. No admin rights or automatic repair.'
+        $label.SetBounds(20, 48, 410, 25)
+        $button = New-Object System.Windows.Forms.Button
+        $button.Text = 'Continue'
+        $button.SetBounds(325, 84, 96, 28)
+        $button.DialogResult = [System.Windows.Forms.DialogResult]::OK
+        $form.Controls.AddRange(@($box, $label, $button))
+        $form.AcceptButton = $button
+        $result = $form.ShowDialog()
+        $selected = $result -eq [System.Windows.Forms.DialogResult]::OK -and $box.Checked
+        $form.Dispose()
+        return $selected
+    } catch {
+        Write-Warning ('Optional component selection unavailable; skipping: ' + $_.Exception.Message)
+        return $false
+    }
+}
 
 Write-Host 'CodasSol Windows Standalone Node v0.2 — independent of Mac' -ForegroundColor Green
 Write-Host 'This installation uses normal user permissions and does not modify antivirus policy.'
@@ -150,3 +189,19 @@ Write-Host "`nWINDOWS NODE READY: http://127.0.0.1:17678" -ForegroundColor Green
 Write-Host 'This Router runs locally even when Mac is off.'
 Write-Host 'Cross-network clients still require their OWN authorized HTTPS ingress and trusted peer configuration.'
 Write-Host 'Optional next step: CLEANUP-OLD.cmd backs up and retires old CodasSol installations.'
+
+# Optional components never interrupt the remote SSE, Router or DevSpace tasks.
+$selected = [bool]$InstallFileSentinel
+if (-not $selected -and -not $SkipSentinelPrompt) {
+    $selected = Select-OptionalFileSentinel
+}
+if ($selected) {
+    $sentinel = Join-Path $bundle 'components\file-sentinel\windows\install.ps1'
+    if (-not (Test-Path -LiteralPath $sentinel)) {
+        throw 'File Sentinel was selected but its installer is missing from the package.'
+    }
+    & $sentinel
+    Write-Host 'Optional File Sentinel installation finished.'
+} else {
+    Write-Host 'File Sentinel not selected (disabled by default).'
+}

@@ -14,6 +14,17 @@ export function reconnectDelayMs(attempt, random = Math.random) {
   return Math.round(base * (0.75 + 0.5 * random()));
 }
 
+// A proxy may close otherwise healthy SSE streams every few minutes. Count
+// short-lived failures towards backoff, but do not let successful, sustained
+// authenticated sessions accumulate into a 15-minute offline delay.
+export function nextSseFailureCount(previousFailures, {
+  readyAt = null, disconnectedAt = Date.now(), stableMs = 60_000
+} = {}) {
+  return readyAt !== null && disconnectedAt - readyAt >= stableMs
+    ? 1
+    : previousFailures + 1;
+}
+
 export async function consumeAgentEvents({
   url, token, signal, onJob, onReady = () => {}, fetchImpl = fetch
 }) {

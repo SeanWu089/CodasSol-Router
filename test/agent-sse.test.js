@@ -11,7 +11,15 @@ import {
   AGENT_SSE_HEARTBEAT_INTERVAL_MS, AGENT_SSE_PRESENCE_TTL_MS,
   estimatedIdleHeartbeatRequests
 } from "../src/agent-timing.js";
-import { consumeAgentEvents, reconnectDelayMs, SseUnavailableError } from "../src/agent-sse.js";
+import { consumeAgentEvents, nextSseFailureCount, reconnectDelayMs, SseUnavailableError } from "../src/agent-sse.js";
+
+test("SSE failure backoff resets only after a sustained authenticated connection", () => {
+  assert.equal(nextSseFailureCount(9, { readyAt: 1_000, disconnectedAt: 61_000 }), 1);
+  assert.equal(nextSseFailureCount(9, { readyAt: 1_000, disconnectedAt: 60_999 }), 10);
+  assert.equal(nextSseFailureCount(9, { readyAt: null, disconnectedAt: 1_000_000 }), 10);
+  assert.equal(nextSseFailureCount(0, { readyAt: 5_000, disconnectedAt: 20_000 }), 1);
+  assert.ok(reconnectDelayMs(nextSseFailureCount(9, { readyAt: 1, disconnectedAt: 120_001 }), () => 0.5) <= 2_000);
+});
 import { createRouterRuntime } from "../src/runtime.js";
 import { createRouterServer } from "../src/server.js";
 

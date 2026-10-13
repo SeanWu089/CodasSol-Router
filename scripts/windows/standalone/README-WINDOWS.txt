@@ -1,4 +1,4 @@
-CodasSol Windows Node — standalone v0.2 preview
+CodasSol Windows Node — standalone v0.2 preview.3
 ===============================================
 
 WHAT THIS DOES
@@ -12,8 +12,10 @@ INSTALL
   1. Extract the ZIP normally. Do not run from inside compressed ZIP preview.
   2. Run INSTALL.cmd as your normal Windows user.
   3. If prompted, initialize DevSpace and select "Coding Agents".
-  4. Confirm "WINDOWS NODE READY" and run VERIFY.cmd once more.
-  5. ONLY AFTER verification passes, run CLEANUP-OLD.cmd to disable old
+  4. After local health verification, optionally check "Install File Sentinel"
+     in the graphical component selector. It is unchecked by default.
+  5. Confirm "WINDOWS NODE READY" and run VERIFY.cmd once more.
+  6. ONLY AFTER verification passes, run CLEANUP-OLD.cmd to disable old
      CodasSol scheduled tasks and archive old install folders, without
      deleting private credentials or other applications.
 
@@ -27,6 +29,12 @@ The default workspace permission root is your current Windows user profile.
 For another directory, run the script in a regular PowerShell session:
   .\install.ps1 -Roots 'C:\Users\YOUR_USERNAME|D:\PROJECTS'
 Choose only locations you have explicit permission to access.
+For unattended installs, use -InstallFileSentinel to opt in explicitly or
+-SkipSentinelPrompt to skip the optional GUI. The File Sentinel itself can
+also be installed/uninstalled independently from
+components\file-sentinel\windows\install.ps1.
+It records local file change metadata and hashes, not file contents or the
+responsible process. It does not attempt to repair or restore files.
 
 HEALTH
   DevSpace: http://127.0.0.1:7676/healthz

@@ -2,7 +2,7 @@
 set -euo pipefail
 here="$(cd "$(dirname "$0")/.." && pwd)"
 out="$here/dist"
-version='v0.2.0-standalone-preview.2'
+version='v0.2.0-standalone-preview.3'
 name="CodasSol-Windows-Node-$version"
 zipname="$name.zip"
 cache="$out/.downloads"
@@ -44,6 +44,9 @@ cp "$here/scripts/windows/standalone/"*.ps1 "$build/"
 cp "$here/scripts/windows/standalone/"*.cmd "$build/"
 cp "$here/scripts/windows/standalone/probe-mcp.mjs" "$build/"
 cp "$here/scripts/windows/standalone/README-WINDOWS.txt" "$build/"
+mkdir -p "$build/components/file-sentinel/windows"
+cp "$here/components/file-sentinel/windows/"*.ps1 "$build/components/file-sentinel/windows/"
+cp "$here/components/file-sentinel/README.md" "$build/components/file-sentinel/"
 # Windows command interpreter expects CRLF line endings for batch scripts.
 BUILD_DIR="$build" python3 - <<'PY'
 from pathlib import Path

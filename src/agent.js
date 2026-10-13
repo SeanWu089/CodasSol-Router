@@ -3,7 +3,7 @@ import process from "node:process";
 import { pathToFileURL } from "node:url";
 import { AgentConfigStore } from "./agent-config.js";
 import { DevSpaceLocalOAuth } from "./devspace-local-auth.js";
-import { consumeAgentEvents, reconnectDelayMs, SseUnavailableError } from "./agent-sse.js";
+import { consumeAgentEvents, nextSseFailureCount, reconnectDelayMs, SseUnavailableError } from "./agent-sse.js";
 import { AGENT_SSE_HEARTBEAT_INTERVAL_MS } from "./agent-timing.js";
 
 function sleep(ms) {
@@ -272,13 +272,14 @@ export async function runAgent({
           }
         }, 5_000);
         heartbeatTimer.unref?.();
-        const connectedAt = Date.now();
+        let readyAt = null;
         try {
           await consumeAgentEvents({
             url: `${config.routerUrl}/_codassol/agent/events`,
             token: config.agentToken,
             signal: controller.signal,
             onReady: () => {
+              readyAt = Date.now();
               heartbeatAt = Date.now() + positiveHeartbeatIntervalMs;
               connectionFailures = 0;
             },
@@ -295,8 +296,9 @@ export async function runAgent({
           } else {
             if ([401, 403, 409].includes(error.status)) throw error;
             logError(error);
-            sseFailures = Date.now() - connectedAt > positiveHeartbeatIntervalMs
-              ? 1 : sseFailures + 1;
+            sseFailures = nextSseFailureCount(sseFailures, {
+              readyAt, disconnectedAt: Date.now()
+            });
             // Repeated stream failures back off; never add a polling request.
             await sleepFn(reconnectDelayMs(sseFailures));
           }

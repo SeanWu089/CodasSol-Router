@@ -1,5 +1,13 @@
 # Todos
 
+## 2026-10-13 — Preview.3 readiness and optional file audit
+
+- [x] Implement and test controlled SSE reconnect backoff after sustained authenticated streams, retaining the free-ingress request budget and strict auth-failure behavior.
+- [x] Package reusable File Sentinel v0.1.0 as a standalone, opt-in component with independent install/uninstall and default-unchecked Windows installer checkbox; build preview.3 ZIP.
+- [ ] **Windows physical deployment remains blocked while Windows is offline.** Once the authorized SSE channel returns, inspect the existing task action/configuration, back up its runtime, deploy tested SSE modules with rollback, verify \`hostname\`, sentinel lifecycle and Windows PowerShell GUI/CLI parsing, and test sustained reconnects; do not enable Tailscale or re-enroll the node.
+- [ ] Add optional, approved process-identity attribution (scoped OS audit or AV event export); FileSystemWatcher cannot identify the actor.
+- [ ] Confirm Windows startup after sign-in and verify the opt-in component's auto-start/recovery and uninstall without stopping Router or SSE.
+
 ## 2026-10-13 — Free-plan-only request budget
 
 - [ ] Restore the Windows outbound task, deploy verified successful-ACK retry-counter reset, synchronize the Windows Git checkout and inspect sanitized current Windows connection diagnostics. Keep low-request policy; do not treat source tests as a completed live stability repair.
