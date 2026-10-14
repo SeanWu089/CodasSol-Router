@@ -82,7 +82,7 @@ function WriteBaseline($snapshot) {
   Move-Item -LiteralPath $tmp -Destination $baseline -Force
 }
 
-function Compare($previous, $current, [string]$source) {
+function Compare-SentinelSnapshots($previous, $current, [string]$source) {
   $changes = 0
   foreach ($id in @($previous.Keys)) {
     if (-not $current.ContainsKey($id)) {
@@ -107,7 +107,7 @@ $current = Snapshot
 if (-not (Test-Path -LiteralPath $baseline)) {
   Record 'BASELINE' '' ('tracked_files=' + $current.Count) 'initial scan'
 } else {
-  [void](Compare $before $current 'restart scan')
+  [void](Compare-SentinelSnapshots $before $current 'restart scan')
 }
 WriteBaseline $current
 if ($Once) { Write-Output ('Scanned ' + $current.Count + ' files; logs: ' + $LogDir); exit 0 }
@@ -155,7 +155,7 @@ try {
     }
     if ((Get-Date) -ge $nextScan) {
       $updated = Snapshot
-      $count = Compare $current $updated 'SHA256 scan'
+      $count = Compare-SentinelSnapshots $current $updated 'SHA256 scan'
       $current = $updated
       if ($count -gt 0) { WriteBaseline $current }
       if ($recent.Count -gt 2000) { $recent.Clear() }

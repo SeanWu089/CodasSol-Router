@@ -1,3 +1,11 @@
+# Windows v0.2.0 standalone preview.4 (2026-10-14, release candidate)
+
+- Fix a Windows PowerShell 5.1 runtime collision where File Sentinel's
+  `Compare` function was resolved as the built-in `Compare-Object` alias.
+- Preserve all preview.3 SSE retry-backoff and optional-component changes.
+- Preview.3's File Sentinel was not installed on the live Windows machine:
+  the first read-only native check failed safely before installation.
+
 # Windows v0.2.0 standalone preview.3 (2026-10-13, source preview)
 
 - Reset accumulated SSE failure backoff following a sustained (>=60s)

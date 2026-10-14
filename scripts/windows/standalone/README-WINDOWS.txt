@@ -1,4 +1,4 @@
-CodasSol Windows Node — standalone v0.2 preview.3
+CodasSol Windows Node — standalone v0.2 preview.4
 ===============================================
 
 WHAT THIS DOES

@@ -2,7 +2,7 @@
 set -euo pipefail
 here="$(cd "$(dirname "$0")/.." && pwd)"
 out="$here/dist"
-version='v0.2.0-standalone-preview.3'
+version='v0.2.0-standalone-preview.4'
 name="CodasSol-Windows-Node-$version"
 zipname="$name.zip"
 cache="$out/.downloads"

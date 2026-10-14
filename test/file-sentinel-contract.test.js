@@ -11,6 +11,8 @@ test("Windows File Sentinel is independent and never performs remote or repair o
   assert.match(script, /changes-/);
   assert.match(script, /events\.jsonl/);
   assert.match(script, /baseline\.json/);
+  assert.match(script, /function Compare-SentinelSnapshots\(/);
+  assert.doesNotMatch(script, /function Compare\(/);
   assert.match(script, /FileSystemWatcher.*not.*process|Process identity unavailable/i);
   assert.match(script, /ScanSeconds = 10/);
   assert.doesNotMatch(script, /Remove-Item|Stop-Process|Set-MpPreference|Invoke-RestMethod|Invoke-WebRequest|curl(?:\.exe)?/i);
@@ -32,5 +34,5 @@ test("Sentinel installer is an opt-in, user-owned, independently removable compo
   assert.match(main, /\$box\.Checked = \$false/);
   assert.match(main, /components\\file-sentinel\\windows\\install\.ps1/);
   assert.match(packager, /components\/file-sentinel\/windows/);
-  assert.match(packager, /standalone-preview\.3/);
+  assert.match(packager, /standalone-preview\.4/);
 });
