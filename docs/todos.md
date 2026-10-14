@@ -1,5 +1,14 @@
 # Todos
 
+## 2026-10-14 — Windows preview.4 deployment checkpoint
+
+- [x] Restore authenticated Windows remote execution; update SSE task logon trigger and bounded automatic restarts without restarting current SSE process.
+- [x] Validate Windows PowerShell 5.1 File Sentinel v0.1.1 baseline operation and install it with the existing independent owned task; preserve its audit logs.
+- [x] Back up SSE app and scheduled task definition; perform detached, local-rollback-guarded preview.4 module cutover and accept only after real CodasSol remote execution, PID and checksum checks. Save proof in the private backup folder.
+- [ ] Verify reliable recovery after Windows sign-out/sign-in, unexpected process exit, connectivity loss and later network recovery; avoid intentionally taking down the sole connector during active work.
+- [ ] Validate fresh-install preview.4 GUI checkbox and headless opt-in/opt-out on a separate Windows test environment. Existing machine used component-only upgrade, not a full reinstall.
+- [ ] Obtain authorized file-access audit / AV history if a future unexplained file deletion occurs; watcher events do not identify the responsible process.
+
 ## 2026-10-13 — Preview.3 readiness and optional file audit
 
 - [x] Implement and test controlled SSE reconnect backoff after sustained authenticated streams, retaining the free-ingress request budget and strict auth-failure behavior.
