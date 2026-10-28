@@ -120,7 +120,7 @@ real deployment identities and addresses in accordance with `SECURITY.md`.
 - [x] Reproduce backend-error authentication fail-open in an isolated mock; prepare and deploy fail-closed ping verification without false OAuth401 responses. Latest version stable-20261022-112732-3aa1ac; 53 tests passed and actual Codas discovery/hostname verified.
 - [x] Enforce HTTPS/minimumTLS1.2 and loopback-only Router binding; preserve backups and verify HTTP301 plus loopback listeners.
 - [x] Verify restored Codas app through real workspace and command calls. Prior connector-migration execution item is complete; user-facing acceptance remains separate below.
-- [ ] Reconcile production-only src enhancements into canonical development source before the next general release. Do not overwrite newer production routing/SSE/traffic behavior with an older checkout.
+- [x] Reconcile production-only src enhancements in isolated source checkpoint 37fbce9 (2026-10-28); integration into develop and production promotion remain separate pending steps below.
 - [ ] Complete remaining security review scope (release/update scripts, mobile code, transitive dependency checks and intended physical Windows runtime) before any claim of a comprehensive all-platform audit. Do not infer Windows identity/readiness from Mac success.
 
 ### User acceptance — preserve reported reconnect failure
@@ -139,4 +139,23 @@ real deployment identities and addresses in accordance with `SECURITY.md`.
 - [ ] SEC-01 user acceptance: use Codas repeatedly without repeated owner-password login; awaiting explicit confirmation.
 - [ ] NET-03 user acceptance: after sleep/wake or network switching, verify automatic recovery; awaiting explicit confirmation.
 - [ ] CF-03 user acceptance: verify automatic startup after logout/login or reboot.
-- [ ] Reconcile production-only Router enhancements before general production promotion.
+- [x] Recover production-only Router enhancements into tested checkpoint 37fbce9 (2026-10-28); no production promotion performed.
+
+
+## 2026-10-28 — Android wireless preview checkpoint
+
+- [x] Compare active production source locally without expanding Codas allowed roots; recover routing/SSE/diagnostic/traffic modules on `fix/runtime-source-reconcile` (37fbce9), based on merged develop 2e339ef. 80 Node and 26 isolated Python checks passed. Production was not restarted or deployed.
+- [x] Implement native Android outbound HTTPS/SSE Agent, encrypted device credential, user-controlled access switch, bounded native commands, APK download/hash/package verification and explicit system installation confirmation; add permission-free Test Pad fixture.
+- [x] Build/install preview.2 (versionCode 3); build and lint passed (zero lint errors), 19 JVM protocol checks passed. Six native protocol checks passed on preview.1; debug instrumentation APK removed after setup. USB reverse list was empty.
+- [x] Verify public MCP path on preview.1: phone workspace/info, HTTPS APK download and system-confirmed installation, launch, screenshot, tap and swipe after unplugging USB. User explicitly confirmed installation/unplug and Taps: 1 / Swipes: 1.
+- [x] Add session-created-at guard to preview.2: reject jobs created before the current access session, alongside generation, expiry and deduplication checks. Router returned DEVICE_OFFLINE after the user disabled access. Stale-session rejection has JVM coverage; no real queued-job replay acceptance is claimed.
+- [ ] Finish preview.2 unplug/reconnect smoke test and user acceptance below.
+- [ ] Review/integrate source checkpoints into develop; keep production deployment and main promotion separate. Android work is isolated on `feat/android-wireless-agent`; develop ancestry is conflict-free at this checkpoint.
+
+### Android user acceptance (separate from automated checks)
+
+- [ ] AND-01 — Open access, unplug USB, keep phone unlocked; issue phone info and launch Test Pad through Codas. Expected: correct phone responds over Wi-Fi/mobile data. Preview.1 passed with explicit unplug confirmation; preview.2 awaiting retest after update.
+- [ ] AND-02 — Close access, then issue a phone request; reopen and send a new request. Expected: closed access rejects requests and old queued work does not execute after reopening. User confirmed closing preview.1; Router returned DEVICE_OFFLINE. Preview.2 stale-task guard automated checks passed; physical reopen/queued-task acceptance pending.
+- [x] AND-03 — Receive Test Pad APK, confirm installation on phone. Expected: installed app launches. Preview.1 user confirmed “已安装并拔线”; remote install status reported installed version 1.0 and launch/screenshot succeeded. No silent installation is promised.
+- [ ] AND-04 — With USB unplugged, remotely tap once and swipe once in Test Pad. Expected: both counters advance and screenshot agrees. Preview.1 user confirmed “计数正确” at Taps: 1 / Swipes: 1. Preview.2 awaiting retest following the access-session fix; prior success retained.
+- [ ] AND-05 — With access enabled, switch Wi-Fi/mobile network and briefly background Codas; return and issue a new request. Expected: reconnect without re-pairing. Untested; OEM battery restrictions, extended background operation and reboot remain unverified. Restarting the app/device deliberately leaves access off.

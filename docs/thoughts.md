@@ -88,3 +88,8 @@ Measure handoff correctness, stale-memory rate, recovery after interruption, tok
 ## 2026-10-22 — Unconfirmed isolation direction
 
 Security audit showed remote shell commands run with Sean's account permissions beyond Desktop allowedRoots. Consider a dedicated low-privilege OS account, container/sandbox, or narrower per-tool permissions; no particular isolation design or restrictions have been approved yet. Preserve useful remote development functionality while separating private credentials from remote command access.
+
+
+## 2026-10-28 — Distributed phone-node scope
+
+The user's longer-term direction is a distributed Codas network with a replaceable active entry/coordinator among online computers, rather than a permanently required personal computer. The confirmed current stage is a wireless Android execution/test node using the existing ingress, with compilation on a computer/cloud and an explicit phone access switch. Automatic coordinator selection/failover and distributed project-state synchronization remain deferred ideas, not part of this Android preview.
