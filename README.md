@@ -462,9 +462,19 @@ python3 "$HOME/Library/Application Support/CodasSol/production/bin/promote-stabl
 
 **Source-sync limitation:** the live runtime has additional routing/SSE/traffic modules that have not yet been reconciled into this branch. Passing these tests does not make this checkout a whole-runtime replacement. Reconcile those modules before general promotion. Sleep/wake, reboot, and physical Windows acceptance remain pending in `docs/todos.md`.
 
-Run release activations serially. The current helper has no deployment lock;
-its in-process rollback covers detected failures, not a killed worker or an
-interrupted operating system. Do not include externally linked release inputs.
+The helper serializes activation and recovery with a persistent process lock.
+It rejects symbolic links in release inputs and staged copies before executing
+candidate code. A durable journal records the previous and candidate releases
+before switching `current`; rollback refuses to overwrite an unrelated change.
+Detected failures and catchable interruptions attempt rollback immediately.
+
+If a worker is killed or the operating system is interrupted, the journal
+remains for the next recovery attempt; this is not an independent watchdog and
+does not promise immediate recovery while no helper is running. The next
+activation first recovers a pending transaction. In an authorized maintenance
+window, `promote-stable.py --recover` performs that recovery explicitly, and may
+restart the Router. `--status` reports whether recovery is pending. Recovery
+failures retain the journal and block a new activation until resolved.
 
 Run the portable release-helper tests without contacting or changing production:
 

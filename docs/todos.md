@@ -5,15 +5,19 @@
 - [x] Preserve the original private development branch and uncommitted files;
   prepare a separate public-safe source snapshot from published history.
 - [x] Add CI coverage for `develop` and portable production-helper tests.
-- [x] Verify 53 Node tests, 13 isolated Python tests, shell syntax and diff hygiene.
+- [x] Verify 53 Node tests and the initial 13 isolated Python tests, shell syntax and diff hygiene.
 - [ ] Integrate the public source PR into `develop` after its GitHub checks and
   review. Branch publication and automated-check results are tracked on GitHub.
 - [ ] Review other unpublished branch/tag histories separately before pushing;
   preserve branches containing device-specific deployment records locally.
 - [ ] Reconcile production-only Router modules before any whole-source runtime
   promotion. Existing SEC-01, NET-03 and CF-03 user acceptance remains pending.
-- [ ] Before production adoption of the exported release helper, add deployment
-  serialization and review externally linked inputs and worker interruption.
+- [x] Reproduce and fix deployment serialization, externally linked inputs,
+  foreign-current protection and durable interruption recovery; verify the
+  expanded isolated regression suite before integration.
+- [ ] Before production adoption, rehearse the updated helper in an authorized
+  maintenance window after reconciling production-only modules. Physical
+  sleep/wake, restart and reboot acceptance is still outstanding.
 
 The original local project-state draft remains unchanged. Public notes omit
 real deployment identities and addresses in accordance with `SECURITY.md`.

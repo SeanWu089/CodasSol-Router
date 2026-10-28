@@ -15,10 +15,17 @@
 - These source checks preserve the unresolved production-only module
   reconciliation and physical user-acceptance gates; they are not a runtime
   promotion or proof of sleep/wake/reboot behavior.
-- Release-helper review identified follow-up boundaries: activations require
-  serialization, copied symlinks must not escape the release, and in-process
-  rollback does not cover worker termination or an OS interruption. The current
-  source sync does not deploy or certify that helper for production use.
+- Release-helper review reproduced concurrent activation, unsafe input links,
+  and lost recovery state after worker interruption. The follow-up adds a
+  persistent `flock`, rejects symlinks before/after staging, and journals the
+  transaction with file/directory synchronization before switching releases.
+  An owned-current check prevents rollback from overwriting another change.
+  A failed rollback retains its journal; explicit recovery or the next
+  activation retries it before further changes. SIGKILL/OS interruption still
+  requires a subsequent recovery invocation; no independent watchdog is claimed.
+- Independent review found no merge-blocking defect in the authentication or
+  Cloudflare supervisor changes. Source checks do not certify physical reboot,
+  sleep/wake, or deployment of the new helper to a running system.
 
 - 2026-10-08 — On the Mac, `launchctl bootstrap gui/$UID` can transiently return exit 5 immediately after booting out a Router LaunchAgent; retrying registration succeeded. `command -v node` also resolved to an ephemeral fnm multishell executable, so persistent launchd configuration should use `node -p process.execPath` and retry label registration. After removing a temporary manual Router and restarting the LaunchAgent, the daemon listened on port 17676 and its authenticated peer-info endpoint reported protocol 2 with a reachable backend.
 - 2026-10-08 — Windows `devspace.cmd` can reference an absent npm bin entrypoint even though the installed `@waishnav/devspace@1.1.0-beta.4` has a working `dist/cli.js`. Both Windows installation/init and scheduled startup must invoke the latter via the bundled Node runtime. The v0.2 worktree now enforces this contract in tests; physical Windows verification is still required.
