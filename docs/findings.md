@@ -143,3 +143,12 @@ Reason: ngrok free quota exceeded; Sean purchased example.com and configured Clo
 - Running instrumentation or force-stopping/upgrading the app may leave this OEM's enabled accessibility service unbound/stopped. User re-toggling Codas Test Control restored service during preview.1 tests; avoid instrumentation after enabling access. Keep debug test APK separate and remove it after development setup.
 - APK installation supports one HTTPS APK (512 MiB maximum), mandatory SHA-256 and package verification, and user-mediated Android system confirmation. Split packages, root, silent installation, general shell/logcat, prolonged background reliability and autonomous coordinator failover are not implemented/verified.
 - A public offline phone request may appear as a generic Cloudflare 502; the local Router response verified DEVICE_OFFLINE. Do not report every edge 502 as an authentication failure or evidence of phone execution.
+
+
+## 2026-10-28 — Android reconnect repair in progress
+
+- User reported preview.2 stayed at “连接中” and appeared to disconnect after screen-off/leaving the app. USB inspection found “连接停止：HTTP_409” and no running AgentService. Available process-exit history showed update/instrumentation stops, not a new screen-off process kill; do not assert OEM killing was proven. Router retained a sole stale SSE consumer and rejected the replacement.
+- Added opt-in 90-second stream leases with exact-stream authenticated acknowledgements, expiry before admission/dispatch and stale-ACK rejection. Legacy SSE consumers remain exclusive and unleased. Phone retries temporary conflicts, uses server time for the initial task cutoff, exposes connection phases, and clears sockets away from the UI thread.
+- Preview.3 adds current-boot-only persisted access intent, sticky foreground-service recovery, bounded renewed partial wake lock while access is on, and a user-confirmed battery-exemption entry. Explicit off releases resources; no boot receiver. Lock-screen visual operations remain rejected.
+- Verification so far: 83 Node tests, 26 Python release tests, Android build/lint passed. Existing installed deployment helper was backed up, updated from reviewed PR #1 safeguards while preserving private default paths/health origin, then dry-run and guarded Router rollout passed local/public health. This does not prove phone acceptance.
+- Phone APK installation was interrupted because the physical USB device disappeared. Preview.3 is built but installation/physical acceptance remains pending; user asked to reconnect.

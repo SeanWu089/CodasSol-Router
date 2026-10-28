@@ -4,6 +4,8 @@ import android.app.*
 import android.content.Intent
 import android.os.IBinder
 import android.os.Build
+import android.os.PowerManager
+import android.os.SystemClock
 import android.content.pm.ServiceInfo
 import org.json.JSONObject
 import java.io.BufferedReader
@@ -24,6 +26,23 @@ class AgentService : Service() {
     private lateinit var store: PhoneStore
     private var session = -1L
     @Volatile private var lastPositive = 0L
+    @Volatile private var streamId: String? = null
+    private var serverSessionStart = 0L
+    private var serverOffset = 0L
+    private var wakeLock: PowerManager.WakeLock? = null
+    private fun state(message: String) {
+        if (AgentState.generation != session) return
+        AgentState.status = message
+        android.util.Log.i("CodasPhone", message)
+        getSystemService(NotificationManager::class.java).notify(1, notification(message))
+    }
+    @Synchronized private fun keepAwake() { AgentState.check(session); wakeLock?.acquire(10 * 60_000L) }
+    private fun releaseConnections() {
+        // Android disconnect can wait for a socket read; never block the UI/stop action.
+        val closing = connections.toList(); connections.removeAll(closing.toSet())
+        if (closing.isNotEmpty()) Thread({ closing.forEach { it.disconnect() } }, "codas-disconnect").apply { isDaemon = true; start() }
+    }
+
     override fun onBind(intent: Intent?): IBinder? = null
     override fun onCreate() {
         super.onCreate(); current = this; store = PhoneStore(this)
@@ -32,11 +51,17 @@ class AgentService : Service() {
     }
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == STOP) { disable(); return START_NOT_STICKY }
-        if (session >= 0) return START_NOT_STICKY
+        if (session >= 0) return START_STICKY
+        if (intent == null && !store.accessRequested()) { stopSelf(); return START_NOT_STICKY }
+        store.requestAccess(true)
         session = AgentState.enable()
         val notification = notification("无线访问已开启；点此查看状态")
         if (Build.VERSION.SDK_INT >= 34) startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
         else startForeground(1, notification)
+        wakeLock = getSystemService(PowerManager::class.java).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Codas:UserAccess").apply {
+            setReferenceCounted(false); acquire(10 * 60_000L)
+        }
+        android.util.Log.i("CodasPhone", "access_service_started")
         var pairing = intent?.getStringExtra("pairing") ?: ""
         intent?.removeExtra("pairing")
         workers.execute {
@@ -53,22 +78,30 @@ class AgentService : Service() {
                 val credential = token!!
                 workers.scheduleWithFixedDelay({
                     try {
-                        if (AgentState.enabled && AgentState.generation == session && AgentState.connected &&
-                            System.currentTimeMillis() - lastPositive >= 30 * 60_000) {
-                            json("/heartbeat", credential, store.metadata()); lastPositive = System.currentTimeMillis()
+                        keepAwake()
+                        val activeStream = streamId
+                        if (AgentState.connected && activeStream != null && SystemClock.elapsedRealtime() - lastPositive >= 20_000) {
+                            json("/heartbeat", credential, store.metadata().put("streamId", activeStream))
+                            lastPositive = SystemClock.elapsedRealtime()
                         }
-                    } catch (_: Exception) { connections.forEach { it.disconnect() } }
-                }, 30, 30, TimeUnit.SECONDS)
+                    } catch (e: Exception) {
+                        if (AgentState.enabled && AgentState.generation == session) state("连接确认失败，正在恢复：${safeError(e)}")
+                        releaseConnections()
+                    }
+                }, 5, 5, TimeUnit.SECONDS)
                 var failures = 0
                 while (AgentState.enabled && AgentState.generation == session) {
                     var readyAt = 0L
                     try {
-                        AgentState.status = "连接中"
+                        state("连接中 · 建立安全连接")
                         val connection = connection("/events", credential).apply {
-                            readTimeout = 65_000; setRequestProperty("Accept", "text/event-stream")
+                            readTimeout = 35_000; setRequestProperty("Accept", "text/event-stream")
+                            setRequestProperty("Accept-Encoding", "identity")
+                            setRequestProperty("X-Codas-Stream-Lease", "1")
                         }
                         try {
                             checkStatus(connection)
+                            state("连接中 · 等待服务端确认")
                             require(connection.contentType?.startsWith("text/event-stream") == true) { "INVALID_STREAM" }
                             Protocol.consume(BufferedReader(connection.inputStream.reader(Charsets.UTF_8))) { type, data ->
                                 AgentState.check(session)
@@ -76,8 +109,13 @@ class AgentService : Service() {
                                     "ready" -> {
                                         val ready = JSONObject(data)
                                         require(ready.getString("deviceId") == store.deviceId && ready.getInt("protocol") == 1) { "PROTOCOL_MISMATCH" }
-                                        readyAt = System.currentTimeMillis(); lastPositive = readyAt
-                                        AgentState.connected = true; AgentState.status = "已连接 · 可接收手机任务"
+                                        require(ready.optLong("leaseMs") == 90_000L) { "ROUTER_LEASE_UPGRADE_REQUIRED" }
+                                        streamId = ready.getString("streamId")
+                                        val serverTime = ready.getLong("serverTime")
+                                        serverOffset = System.currentTimeMillis() - serverTime
+                                        if (serverSessionStart == 0L) serverSessionStart = serverTime
+                                        readyAt = System.currentTimeMillis(); lastPositive = SystemClock.elapsedRealtime()
+                                        AgentState.connected = true; state("已连接 · 后台访问开启")
                                     }
                                     "job" -> {
                                         require(readyAt > 0) { "MISSING_READY" }
@@ -85,27 +123,30 @@ class AgentService : Service() {
                                         val id = job.getString("id")
                                         val result = JSONObject().put("jobId", id)
                                         try {
-                                            AgentState.check(session, job.getLong("expiresAt"))
-                                            Protocol.checkCreatedAt(job.getLong("createdAt"), AgentState.enabledAt, job.getLong("expiresAt"))
+                                            val localExpiry = job.getLong("expiresAt") + serverOffset
+                                            AgentState.check(session, localExpiry)
+                                            Protocol.checkCreatedAt(job.getLong("createdAt"), serverSessionStart, job.getLong("expiresAt"))
                                             require(store.acceptJob(id)) { "DUPLICATE_JOB" }
-                                            result.put("ok", true).put("result", PhoneCommands(this, store, session, job.getLong("expiresAt")).execute(job.getJSONObject("payload")))
+                                            result.put("ok", true).put("result", PhoneCommands(this, store, session, localExpiry).execute(job.getJSONObject("payload")))
                                         } catch (e: Exception) {
                                             result.put("ok", false).put("error", JSONObject().put("code", "PHONE_OPERATION_REJECTED").put("message", safeError(e)))
                                         }
                                         AgentState.check(session)
-                                        json("/result", credential, result); lastPositive = System.currentTimeMillis(); failures = 0
+                                        // A result arriving after its caller timed out is not a fatal device conflict.
+                                        try { json("/result", credential, result) } catch (e: Rejected) { if (e.status != 409) throw e }
+                                        failures = 0
                                     }
                                 }
                             }
                             throw IllegalStateException("STREAM_CLOSED")
-                        } finally { connections.remove(connection); connection.disconnect() }
+                        } finally { streamId = null; connections.remove(connection); connection.disconnect() }
                     } catch (e: Exception) {
                         AgentState.connected = false
                         if (!AgentState.enabled || AgentState.generation != session) break
-                        if (e is Rejected && e.status in listOf(401,403,404,409)) throw e
+                        if (e is Rejected && e.status in listOf(401,403,404)) throw e
                         failures = if (readyAt > 0 && System.currentTimeMillis() - readyAt >= 60_000) 1 else min(failures + 1, 6)
-                        AgentState.status = "网络中断，等待重连"
-                        Thread.sleep(min(60_000L, 1000L shl failures))
+                        state(if (e is Rejected && e.status == 409) "旧连接正在释放，自动重连中" else "网络中断，自动重连：${safeError(e)}")
+                        Thread.sleep(min(15_000L, 1000L shl failures))
                     }
                 }
             } catch (e: Exception) {
@@ -114,11 +155,11 @@ class AgentService : Service() {
                 }
             }
         }
-        return START_NOT_STICKY
+        return START_STICKY
     }
     private class Rejected(val status: Int) : Exception("HTTP_$status")
     private fun checkStatus(c: HttpURLConnection) { if (c.responseCode !in 200..299) throw Rejected(c.responseCode) }
-    private fun connection(path: String, token: String): HttpURLConnection {
+    @Synchronized private fun connection(path: String, token: String): HttpURLConnection {
         AgentState.check(session)
         return (URL(store.endpoint + "/_codassol/agent" + path).openConnection() as HttpURLConnection).apply {
             instanceFollowRedirects = false; connectTimeout = 15_000; readTimeout = 15_000
@@ -140,9 +181,11 @@ class AgentService : Service() {
             return JSONObject(String(bytes, Charsets.UTF_8))
         } finally { connections.remove(c); c.disconnect() }
     }
-    fun disable() {
+    @Synchronized fun disable() {
+        store.requestAccess(false)
         if (session < 0 || AgentState.generation == session) AgentState.disable()
-        connections.forEach { it.disconnect() }; workers.shutdownNow()
+        workers.shutdownNow(); releaseConnections()
+        wakeLock?.let { if (it.isHeld) it.release() }
         ApkOperations.cancel(this)
         stopForeground(STOP_FOREGROUND_REMOVE); stopSelf()
     }
@@ -153,9 +196,12 @@ class AgentService : Service() {
             .setContentTitle("Codas 手机访问已开启").setContentText(text).setContentIntent(open).setOngoing(true)
             .addAction(Notification.Action.Builder(null, "关闭访问", stop).build()).build()
     }
-    override fun onDestroy() {
+    override fun onTaskRemoved(rootIntent: Intent?) { android.util.Log.i("CodasPhone", "task_removed_access_continues"); super.onTaskRemoved(rootIntent) }
+    @Synchronized override fun onDestroy() {
+        android.util.Log.i("CodasPhone", "access_service_destroyed")
         if (AgentState.generation == session) AgentState.disable()
-        connections.forEach { it.disconnect() }; workers.shutdownNow()
+        workers.shutdownNow(); releaseConnections()
+        wakeLock?.let { if (it.isHeld) it.release() }
         if (current === this) current = null
         super.onDestroy()
     }

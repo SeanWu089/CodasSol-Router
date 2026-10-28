@@ -57,3 +57,24 @@ test("authenticated phone SSE round-trip preserves device identity and task affi
  assert.deepEqual(await pending,{phone:"verified"});
  await reader.cancel();
 });
+
+
+test("leased phone HTTP handshake and heartbeat are bound to one stream", async(t)=>{
+ const stateDir=await mkdtemp(path.join(tmpdir(),"codas-phone-lease-"));
+ const config={stateDir,localDeviceId:"local",localRoots:["/tmp"],backendHost:"127.0.0.1",backendPort:1};
+ const runtime=await createRouterRuntime(config);const server=createRouterServer(config,runtime);
+ await new Promise(r=>server.listen(0,"127.0.0.1",r));
+ t.after(async()=>{runtime.agentHub.closeStreams();server.closeAllConnections();await new Promise(r=>server.close(r));await rm(stateDir,{recursive:true,force:true});});
+ const base=`http://127.0.0.1:${server.address().port}/_codassol/agent`;
+ const post=(route,token,body)=>fetch(base+route,{method:"POST",headers:{authorization:`Bearer ${token}`,"content-type":"application/json"},body:JSON.stringify(body)});
+ const enrolled=await post("/enroll",runtime.privateState.pairingToken,{id:"lease-phone",platform:"android",roots:["/codas/android"]});
+ const {agentToken}=await enrolled.json();
+ const stream=await fetch(base+"/events",{headers:{authorization:`Bearer ${agentToken}`,"x-codas-stream-lease":"1"}});
+ const reader=stream.body.getReader();const event=new TextDecoder().decode((await reader.read()).value);
+ const ready=JSON.parse(event.split("data: ")[1].trim());
+ assert.equal(ready.leaseMs,90_000);assert.equal(ready.heartbeatIntervalMs,20_000);assert.ok(ready.serverTime<=Date.now());
+ assert.equal((await post("/heartbeat",agentToken,{streamId:"wrong"})).status,409);
+ assert.equal((await post("/heartbeat",agentToken,{streamId:ready.streamId})).status,200);
+ assert.equal(runtime.devices.get("lease-phone").heartbeatTtlMs,90_000);
+ await reader.cancel();
+});

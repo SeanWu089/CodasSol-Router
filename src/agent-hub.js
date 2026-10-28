@@ -5,16 +5,19 @@ export class AgentHub {
   #waiters = new Map();
   #pending = new Map();
   #streams = new Map();
+  #clock;
+  constructor({ clock = () => performance.now() } = {}) { this.#clock = clock; }
 
   // One authenticated task consumer per device. In particular, replacing a
   // live stream could silently route a job to the wrong/old connection.
-  subscribe(deviceId, deliver, close = () => {}) {
+  subscribe(deviceId, deliver, close = () => {}, { leaseMs = 0 } = {}) {
+    this.expireStream(deviceId);
     if (this.#streams.has(deviceId) || this.#waiters.has(deviceId)) {
       throw Object.assign(new Error("Agent already has a task consumer"), {
         code: "AGENT_CONSUMER_ACTIVE"
       });
     }
-    const stream = { deliver, close };
+    const stream = { deliver, close, id: randomUUID(), leaseMs, deadline: this.#clock() + leaseMs };
     this.#streams.set(deviceId, stream);
     // Let the caller flush its HTTP headers before a queued job is emitted.
     queueMicrotask(() => {
@@ -26,9 +29,28 @@ export class AgentHub {
       }
       if (queue && !queue.length) this.#queues.delete(deviceId);
     });
-    return () => {
-      if (this.#streams.get(deviceId) === stream) this.#streams.delete(deviceId);
+    const unsubscribe = () => {
+      if (this.#streams.get(deviceId) !== stream) return false;
+      return this.#streams.delete(deviceId);
     };
+    unsubscribe.streamId = stream.id;
+    return unsubscribe;
+  }
+
+  expireStream(deviceId) {
+    const stream = this.#streams.get(deviceId);
+    if (!stream?.leaseMs || this.#clock() < stream.deadline) return false;
+    this.#streams.delete(deviceId);
+    try { stream.close(); } catch { /* cleanup cannot preserve an expired consumer */ }
+    return true;
+  }
+
+  renewStream(deviceId, streamId) {
+    this.expireStream(deviceId);
+    const stream = this.#streams.get(deviceId);
+    if (!stream?.leaseMs || stream.id !== streamId) return false;
+    stream.deadline = this.#clock() + stream.leaseMs;
+    return true;
   }
 
   #deliver(stream, job) {
@@ -83,6 +105,7 @@ export class AgentHub {
       timer.unref?.();
       this.#pending.set(jobId, { deviceId, resolve, reject, timer });
 
+      this.expireStream(deviceId);
       const stream = this.#streams.get(deviceId);
       const queued = this.#queues.get(deviceId);
       const waiter = this.#waiters.get(deviceId);
@@ -102,6 +125,7 @@ export class AgentHub {
   }
 
   async poll(deviceId, { timeoutMs = 25_000 } = {}) {
+    this.expireStream(deviceId);
     if (this.#streams.has(deviceId) || this.#waiters.has(deviceId)) {
       throw Object.assign(new Error("Agent already has a task consumer"), {
         code: "AGENT_CONSUMER_ACTIVE"

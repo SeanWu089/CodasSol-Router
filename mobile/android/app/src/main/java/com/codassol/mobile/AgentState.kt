@@ -28,7 +28,7 @@ object AgentState {
         Protocol.checkJob(enabled, generation, session, expires, System.currentTimeMillis())
 }
 
-class PhoneStore(context: Context) {
+class PhoneStore(private val context: Context) {
     private val prefs = context.getSharedPreferences("codas-phone", Context.MODE_PRIVATE)
     val deviceId: String = prefs.getString("device", null) ?: ("android-" + UUID.randomUUID()).also {
         check(prefs.edit().putString("device", it).commit())
@@ -40,6 +40,11 @@ class PhoneStore(context: Context) {
             val clean = Protocol.endpoint(value)
             if (clean != endpoint) { check(prefs.edit().remove("credential").putString("endpoint", clean).commit()) }
         }
+    private fun bootCount() = android.provider.Settings.Global.getInt(context.contentResolver, android.provider.Settings.Global.BOOT_COUNT, -1)
+    fun accessRequested() = prefs.getBoolean("access_requested", false) && bootCount() >= 0 && prefs.getInt("access_boot", -2) == bootCount()
+    fun requestAccess(enabled: Boolean) {
+        check(prefs.edit().putBoolean("access_requested", enabled).putInt("access_boot", bootCount()).commit())
+    }
     private fun key(): SecretKey {
         val ks = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
         return (ks.getKey("codas-phone-agent", null) as? SecretKey) ?: KeyGenerator.getInstance("AES", "AndroidKeyStore").apply {

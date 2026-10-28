@@ -44,6 +44,12 @@ class MainActivity : Activity() {
                 val next=ApkOperations.confirmation(); if(next!=null) startActivity(next)
             } else ApkOperations.install(this)
         }
+        button("允许后台连接（锁屏使用）") {
+            val power = getSystemService(android.os.PowerManager::class.java)
+            if (!power.isIgnoringBatteryOptimizations(packageName)) startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName")))
+            else Toast.makeText(this, "已允许后台连接", Toast.LENGTH_SHORT).show()
+        }
+        label("访问开启时保持后台连接，会增加耗电。关闭访问即可停止；系统强行停止后需重新打开应用，手机重启后需手动开启。",14f)
         label("手机标识\n${store.deviceId}",12f)
         setContentView(ScrollView(this).apply { addView(column) })
         access.setOnCheckedChangeListener { _,checked ->
@@ -60,11 +66,15 @@ class MainActivity : Activity() {
                     pairing.text.clear()
                 } catch(e:Exception) { AgentState.status="无法开启：${friendlyError(safeError(e))}";render() }
             } else {
-                AgentState.disable();AgentService.current?.disable();ApkOperations.cancel(this);render()
+                store.requestAccess(false);AgentState.disable();AgentService.current?.disable();ApkOperations.cancel(this);render()
             }
         }
     }
-    override fun onResume() { super.onResume();main.post(refresh) }
+    override fun onResume() {
+        super.onResume()
+        if (store.accessRequested() && AgentService.current == null) startForegroundService(Intent(this, AgentService::class.java))
+        main.post(refresh)
+    }
     override fun onPause() { main.removeCallbacks(refresh);super.onPause() }
     private fun friendlyError(code:String) = when(code) {
         "HTTPS_ORIGIN_REQUIRED" -> "请填写有效的 HTTPS Codas 入口"
@@ -90,7 +100,8 @@ class MainActivity : Activity() {
         rendering=true;access.isChecked=AgentState.enabled;rendering=false
         endpoint.isEnabled=!AgentState.enabled;pairing.isEnabled=!AgentState.enabled
         val op=ApkOperations.snapshot(this)
-        status.text="${AgentState.status}\n测试控制：${if(PhoneAccessibility.current!=null) "已授权" else "未授权"}\n最近操作：${AgentState.lastAction}\n安装：${installStatus(op.optString("status"))} ${op.optString("package")}\n${friendlyError(op.optString("error"))}"
+        val backgroundAllowed = getSystemService(android.os.PowerManager::class.java).isIgnoringBatteryOptimizations(packageName)
+        status.text="${AgentState.status}\n后台连接：${if(backgroundAllowed) "已允许" else "请点下方按钮允许锁屏连接"}\n测试控制：${if(PhoneAccessibility.current!=null) "已授权" else "未授权"}\n最近操作：${AgentState.lastAction}\n安装：${installStatus(op.optString("status"))} ${op.optString("package")}\n${friendlyError(op.optString("error"))}"
         install.isEnabled=AgentState.enabled && op.optString("status") in listOf("ready_to_install","awaiting_confirmation")
         install.text=if(op.optString("status")=="awaiting_confirmation") "继续系统安装确认" else "安装收到的测试包"
     }

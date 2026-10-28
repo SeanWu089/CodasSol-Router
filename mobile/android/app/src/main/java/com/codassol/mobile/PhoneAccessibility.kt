@@ -21,7 +21,8 @@ class PhoneAccessibility : AccessibilityService() {
     private val main = Handler(Looper.getMainLooper())
     @Volatile private var testPackage: String? = null
     override fun onServiceConnected() { current = this }
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) { current = this }
+    override fun onUnbind(intent: android.content.Intent?): Boolean { if (current === this) current = null; return super.onUnbind(intent) }
     override fun onInterrupt() {}
     override fun onDestroy() { if (current === this) current = null; super.onDestroy() }
     private fun guard(session: Long, expires: Long) {

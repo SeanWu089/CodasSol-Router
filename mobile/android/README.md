@@ -18,14 +18,12 @@ Requires Android 11+ (API 30). This preview retains package ID
    is not saved. Backup/device transfer of credentials is excluded.
 3. Enable **Codas 测试控制** in Android Accessibility settings for screenshots,
    launch and gestures. Permit installation from Codas when testing APKs.
-4. Keep the phone unlocked for visual tests. OEM power management may require
-   manually allowing the foreground app to remain active.
+4. Tap **允许后台连接（锁屏使用）** and confirm Android's battery-optimization exemption to allow screen-off connectivity. Keep the phone unlocked for visual tests; info/connection checks still work while locked. OEM-specific background restrictions may require additional user settings.
 
 Turning access off closes the stream, rejects new actions, rejects jobs created before the current enabled session, invalidates queued
 callbacks and cancels pending download/installation work. Already completed
 installations remain installed. A gesture already dispatched to Android may
-finish its short stroke. Process death/reboot leaves access off; there is no
-boot receiver or automatic service restart.
+finish its short stroke. While access is on, a foreground service and bounded, renewed partial wake lock maintain the user-requested testing session (with increased battery use). Returning Home/Back does not turn access off. Android may restart a reclaimed service using the persisted switch state for the current boot only. Explicitly turning access off clears that state and releases the wake lock. System Force stop stops execution until the user opens the app again; reboot requires manually enabling access. There is no boot receiver.
 
 ## Cloud AI tool usage
 
@@ -38,9 +36,7 @@ Use device discovery to obtain the **explicit phone device ID**, then:
 with `open_workspace`. The phone returns a stable workspace ID and its tool
 instructions. `exec_command` is a compatibility envelope for a native operation
 API here, **not an Android shell**. Other DevSpace file/process tools are rejected.
-No production Router change is needed where authenticated Agent SSE is already
-available. The source-reconciliation checkpoint preserves that existing wire
-protocol; older Routers without SSE need a separately tested upgrade.
+Preview.3 requires the optional stream-lease extension in this branch: a ready event supplies a stream ID, server time and 90-second lease; the phone acknowledges that exact stream every 20 seconds. An expired stream is removed before a new consumer is admitted, and old acknowledgements cannot renew its replacement. Legacy desktop SSE clients retain their existing behavior. Upgrade the Router through its guarded production release workflow before using preview.3. Server time anchors the initial-session job cutoff so ordinary phone clock differences do not cause every new job to be rejected. Temporary HTTP 409 consumer conflicts retry; they do not disable the access switch.
 
 Use the returned `workspace_id` and one of these `cmd` values:
 

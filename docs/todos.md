@@ -159,3 +159,13 @@ real deployment identities and addresses in accordance with `SECURITY.md`.
 - [x] AND-03 — Receive Test Pad APK, confirm installation on phone. Expected: installed app launches. Preview.1 user confirmed “已安装并拔线”; remote install status reported installed version 1.0 and launch/screenshot succeeded. No silent installation is promised.
 - [ ] AND-04 — With USB unplugged, remotely tap once and swipe once in Test Pad. Expected: both counters advance and screenshot agrees. Preview.1 user confirmed “计数正确” at Taps: 1 / Swipes: 1. Preview.2 awaiting retest following the access-session fix; prior success retained.
 - [ ] AND-05 — With access enabled, switch Wi-Fi/mobile network and briefly background Codas; return and issue a new request. Expected: reconnect without re-pairing. Untested; OEM battery restrictions, extended background operation and reboot remain unverified. Restarting the app/device deliberately leaves access off.
+
+
+## 2026-10-28 — Confirmed reconnect, integration and cleanup work
+
+- [x] Reproduce stale-consumer conflict and add bounded phone stream leases; regressions and guarded Router rollout passed.
+- [ ] Install preview.3 and validate AND-01/02/04 again; prior preview.2 failure remains retained.
+- [ ] AND-06 — With access on and background permission granted, return Home/Back and lock the phone; issue info repeatedly, then unlock and run visual controls. Expected: connection survives background/lock; screenshot/gestures require unlock. User reported failure on preview.2; awaiting repaired-version retest.
+- [ ] AND-07 — Interrupt connectivity, restore it and issue a fresh request. Expected: automatic reconnect without re-pairing or manually restarting Codas, and old queued operations do not run. Awaiting physical test; lease expiry and old-ACK isolation passed automated checks.
+- [ ] After physical acceptance, integrate reviewed Android/reconciliation/recovery commits into develop (user explicitly authorized). Keep main separate.
+- [ ] After integration, remove only clean, fully merged, unused worktrees; preserve all dirty worktrees and unknown ignored artifacts. No blanket stash, reset or forced removal.

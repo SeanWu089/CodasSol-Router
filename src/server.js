@@ -456,7 +456,11 @@ async function handleAgentRoute(req, res, runtime) {
 
   if (req.url === "/_codassol/agent/heartbeat" && req.method === "POST") {
     const body = await readJsonBody(req);
-    const device = ensureRegisteredDevice(runtime, identity, body);
+    if (body.streamId !== undefined && !runtime.agentHub.renewStream(identity.id, body.streamId)) {
+      sendJson(res, 409, { error: "stream_lease_expired" });
+      return true;
+    }
+    const device = ensureRegisteredDevice(runtime, identity, body.streamId ? { ...body, heartbeatTtlMs: 90_000 } : body);
     sendJson(res, 200, { ok: true, deviceId: device.id, online: device.online });
     return true;
   }
@@ -473,18 +477,21 @@ async function handleAgentRoute(req, res, runtime) {
       res.write(`event: ${name}\ndata: ${JSON.stringify(data)}\n\n`);
       return true;
     };
+    const leased = req.headers["x-codas-stream-lease"] === "1";
+    const leaseMs = leased ? 90_000 : 0;
     let unsubscribe;
     try {
       // Reserve the sole consumer before sending response headers.
       unsubscribe = runtime.agentHub.subscribe(
         identity.id, (job) => sendEvent("job", { job }),
-        () => { if (!res.destroyed) res.end(); }
+        () => { if (!res.destroyed) res.destroy(); },
+        { leaseMs }
       );
     } catch (error) {
       sendJson(res, 409, { error: error.code || "agent_consumer_active" });
       return true;
     }
-    ensureRegisteredDevice(runtime, identity, { heartbeatTtlMs: AGENT_SSE_PRESENCE_TTL_MS });
+    ensureRegisteredDevice(runtime, identity, { heartbeatTtlMs: leaseMs || AGENT_SSE_PRESENCE_TTL_MS });
     res.writeHead(200, {
       "content-type": "text/event-stream; charset=utf-8",
       "cache-control": "no-cache, no-transform",
@@ -492,8 +499,10 @@ async function handleAgentRoute(req, res, runtime) {
       "connection": "keep-alive"
     });
     res.flushHeaders();
-    sendEvent("ready", { deviceId: identity.id, protocol: 1 });
+    sendEvent("ready", { deviceId: identity.id, protocol: 1, serverTime: Date.now(),
+      ...(leased ? { streamId: unsubscribe.streamId, leaseMs, heartbeatIntervalMs: 20_000 } : {}) });
     const keepalive = setInterval(() => {
+      if (leased && runtime.agentHub.expireStream(identity.id)) return;
       if (!res.destroyed && !res.writableEnded) {
         if (res.writableLength > 256_000) {
           res.destroy();
@@ -508,11 +517,11 @@ async function handleAgentRoute(req, res, runtime) {
       if (cleaned) return;
       cleaned = true;
       clearInterval(keepalive);
-      unsubscribe();
+      const owned = unsubscribe();
       // Drop back to the legacy timeout only when a stream really closes;
       // a GET request finishing by itself is not an SSE disconnection.
       const device = runtime.devices.get(identity.id);
-      if (device?.heartbeatTtlMs === AGENT_SSE_PRESENCE_TTL_MS) {
+      if (owned && device?.heartbeatTtlMs === AGENT_SSE_PRESENCE_TTL_MS) {
         runtime.devices.setHeartbeatTtl(identity.id, 30_000);
       }
     };
