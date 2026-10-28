@@ -102,3 +102,8 @@ print credentials. Remove the test APK after testing.
 Manual acceptance IDs AND-01…AND-05 are tracked in `docs/todos.md`; automated
 checks do not mark user acceptance passed. Final wireless acceptance requires
 physically unplugging USB and performing actual Codas operations.
+
+
+## Updating Codas itself
+
+From preview.3 onward, `android {"action":"update_agent","url":"https://downloads.example.com/codas.apk","sha256":"<64 hex characters>"}` downloads a newer Codas APK. It requires the installed signing certificate set and a strictly higher Android versionCode, in addition to the normal HTTPS/hash checks. Ordinary `install` still rejects the Agent's own package. The user confirms installation through the same phone buttons and Android system UI; it is not silent. Android replaces/stops the app during an update, so open Codas afterward if needed and verify `android info` reports the new `agent_version_code`. Preview.2 cannot bootstrap this feature: its one-time upgrade requires an ordinary browser APK download/system confirmation or developer USB install.

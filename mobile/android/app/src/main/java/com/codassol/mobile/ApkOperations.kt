@@ -36,14 +36,15 @@ object ApkOperations {
         require(uri.scheme == "https" && uri.host != null && uri.userInfo == null && uri.fragment == null) { "APK_HTTPS_REQUIRED" }
         return uri.toURL()
     }
-    @Synchronized fun download(context: Context, args: JSONObject, session: Long): JSONObject {
+    @Synchronized fun download(context: Context, args: JSONObject, session: Long, selfUpdate: Boolean = false): JSONObject {
         AgentState.check(session)
         require(state.optString("status") !in listOf("downloading","ready_to_install","installing","awaiting_confirmation")) { "INSTALL_ALREADY_ACTIVE" }
         val url = https(args.getString("url"))
         val hash = args.getString("sha256").lowercase()
         require(hash.matches(Regex("[a-f0-9]{64}"))) { "APK_SHA256_REQUIRED" }
         val target = args.getString("package")
-        require(target != context.packageName && target.matches(Regex("[a-zA-Z][a-zA-Z0-9_]*(\\.[a-zA-Z0-9_]+)+"))) { "INVALID_PACKAGE" }
+        require((selfUpdate || target != context.packageName) && target.matches(Regex("[a-zA-Z][a-zA-Z0-9_]*(\\.[a-zA-Z0-9_]+)+"))) { "INVALID_PACKAGE" }
+        require(!selfUpdate || target == context.packageName) { "INVALID_AGENT_UPDATE_TARGET" }
         val id = UUID.randomUUID().toString()
         state = JSONObject().put("operation_id",id).put("status","downloading").put("package",target).put("sha256",hash)
         operationSession = session; pending = null; installSession = -1
@@ -79,8 +80,15 @@ object ApkOperations {
                 AgentState.check(session)
                 val actual=digest.digest().joinToString("") { "%02x".format(it) }
                 require(actual==hash) { "APK_HASH_MISMATCH" }
-                val archive=context.packageManager.getPackageArchiveInfo(local.path,0) ?: error("INVALID_APK")
+                val archive=context.packageManager.getPackageArchiveInfo(local.path,android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES) ?: error("INVALID_APK")
                 require(archive.packageName==target) { "APK_PACKAGE_MISMATCH" }
+                if (selfUpdate) {
+                    val installed = context.packageManager.getPackageInfo(context.packageName, android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES)
+                    fun signers(info: android.content.pm.PackageInfo): Set<String> = info.signingInfo?.apkContentsSigners?.map {
+                        MessageDigest.getInstance("SHA-256").digest(it.toByteArray()).joinToString("") { b -> "%02x".format(b) }
+                    }?.toSet() ?: emptySet()
+                    Protocol.checkAgentUpdate(installed.longVersionCode, archive.longVersionCode, signers(installed), signers(archive))
+                }
                 synchronized(this) {
                     AgentState.check(session)
                     state=JSONObject(state.toString()).put("bytes",total).put("version",archive.versionName ?: "")

@@ -27,6 +27,12 @@ public final class Protocol {
         if (createdAt < enabledAt || createdAt <= 0 || createdAt >= expiresAt)
             throw new IllegalStateException("JOB_PREDATES_ACCESS_SESSION");
     }
+    public static void checkAgentUpdate(long installedVersion, long nextVersion,
+            java.util.Set<String> installedSigners, java.util.Set<String> nextSigners) {
+        if (nextVersion <= installedVersion) throw new IllegalArgumentException("AGENT_UPDATE_NOT_NEWER");
+        if (installedSigners.isEmpty() || !installedSigners.equals(nextSigners))
+            throw new IllegalArgumentException("AGENT_UPDATE_SIGNER_MISMATCH");
+    }
     public static final class SeenJobs {
         private final LinkedHashSet<String> ids = new LinkedHashSet<>();
         public synchronized boolean accept(String id) {

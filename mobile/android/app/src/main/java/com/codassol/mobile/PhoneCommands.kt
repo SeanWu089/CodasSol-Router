@@ -34,7 +34,7 @@ class PhoneCommands(private val context: Context, private val store: PhoneStore,
         if (params.getString("name") == "open_workspace") {
             require(args.getString("path").trimEnd('/') == "/codas/android") { "INVALID_PHONE_WORKSPACE" }
             require(args.optString("mode", "checkout") == "checkout") { "WORKTREE_UNSUPPORTED_ON_PHONE" }
-            val instructions = "Android phone workspace. No shell or general filesystem. Use exec_command with this workspace_id and cmd='android info' or 'android '+JSON. Actions: info; apps; screenshot; tap {x,y}; swipe {x,y,endX,endY,durationMs}; launch {package}; install {url,sha256,package}; install_status. Coordinates use physical display pixels returned by screenshot. Installation returns an operation id: poll install_status; user opens Codas and confirms installation on the phone. Never automate system permission, installation or security confirmations. Read/open/apply_patch/shell/process tools are unsupported. Access must remain enabled; phone must be unlocked for visual operations. Download supports one single APK up to 512 MiB; compilation runs elsewhere. A launch request is not proof the app opened: verify with screenshot/info. Installed package verification appears in install_status."
+            val instructions = "Android phone workspace. No shell or general filesystem. Use exec_command with this workspace_id and cmd='android info' or 'android '+JSON. Actions: info; apps; screenshot; tap {x,y}; swipe {x,y,endX,endY,durationMs}; launch {package}; install {url,sha256,package}; update_agent {url,sha256}; install_status. Coordinates use physical display pixels returned by screenshot. Installation returns an operation id: poll install_status; user opens Codas and confirms installation on the phone. Never automate system permission, installation or security confirmations. Read/open/apply_patch/shell/process tools are unsupported. Access must remain enabled; phone must be unlocked for visual operations. Download supports one single APK up to 512 MiB; compilation runs elsewhere. A launch request is not proof the app opened: verify with screenshot/info. Installed package verification appears in install_status."
             val data = JSONObject().put("workspace_id", store.workspaceId).put("root", "/codas/android").put("mode", "checkout")
                 .put("instruction", instructions).put("review", JSONObject().put("available", false).put("reason", "Native phone operations"))
             return JSONObject().put("structuredContent", data).put("content", JSONArray().put(text(data.toString())))
@@ -52,6 +52,8 @@ class PhoneCommands(private val context: Context, private val store: PhoneStore,
         when (action) {
             "info" -> data = JSONObject().put("device_id", store.deviceId).put("manufacturer", Build.MANUFACTURER)
                 .put("model", Build.MODEL).put("android", Build.VERSION.RELEASE).put("sdk", Build.VERSION.SDK_INT)
+                .put("agent_version", context.packageManager.getPackageInfo(context.packageName,0).versionName)
+                .put("agent_version_code", context.packageManager.getPackageInfo(context.packageName,0).longVersionCode)
                 .put("access_enabled", AgentState.enabled).put("control_ready", PhoneAccessibility.current != null)
                 .put("locked", context.getSystemService(KeyguardManager::class.java).isKeyguardLocked)
                 .put("foreground_package", PhoneAccessibility.current?.rootInActiveWindow?.packageName?.toString() ?: JSONObject.NULL)
@@ -63,6 +65,7 @@ class PhoneCommands(private val context: Context, private val store: PhoneStore,
                 }
                 data = JSONObject().put("apps", apps)
             }
+            "update_agent" -> data = ApkOperations.download(context, JSONObject(operation.toString()).put("package",context.packageName), session, selfUpdate = true)
             "install" -> data = ApkOperations.download(context, operation, session)
             "install_status" -> data = ApkOperations.snapshot(context)
             "launch" -> {

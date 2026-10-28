@@ -169,3 +169,6 @@ real deployment identities and addresses in accordance with `SECURITY.md`.
 - [ ] AND-07 — Interrupt connectivity, restore it and issue a fresh request. Expected: automatic reconnect without re-pairing or manually restarting Codas, and old queued operations do not run. Awaiting physical test; lease expiry and old-ACK isolation passed automated checks.
 - [ ] After physical acceptance, integrate reviewed Android/reconciliation/recovery commits into develop (user explicitly authorized). Keep main separate.
 - [ ] After integration, remove only clean, fully merged, unused worktrees; preserve all dirty worktrees and unknown ignored artifacts. No blanket stash, reset or forced removal.
+
+- [x] Build preview.3 with explicit same-signer/newer-version Agent update and prepare USB-free browser bootstrap delivery for existing preview.2.
+- [ ] AND-08 — On preview.3 or newer, request update_agent with a newer same-signed APK, approve on phone and reopen Codas; verify agent_version_code. Expected: successful upgrade retaining pairing; wrong signer/equal or lower versions rejected. JVM gates passed, full device update not yet verified.

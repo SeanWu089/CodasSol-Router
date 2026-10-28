@@ -18,6 +18,11 @@ public final class ProtocolTest {
         rejects(()->Protocol.checkCreatedAt(99,100,130)); // queued while access was off
         rejects(()->Protocol.checkCreatedAt(100,100,100)); // invalid deadline
         Protocol.checkCreatedAt(101,100,130); // fresh job in current enabled session
+        Protocol.checkAgentUpdate(3,4,java.util.Set.of("trusted"),java.util.Set.of("trusted"));
+        rejects(()->Protocol.checkAgentUpdate(4,4,java.util.Set.of("trusted"),java.util.Set.of("trusted")));
+        rejects(()->Protocol.checkAgentUpdate(4,3,java.util.Set.of("trusted"),java.util.Set.of("trusted")));
+        rejects(()->Protocol.checkAgentUpdate(3,4,java.util.Set.of("trusted"),java.util.Set.of("different")));
+        rejects(()->Protocol.checkAgentUpdate(3,4,java.util.Set.of(),java.util.Set.of()));
         var seen=new Protocol.SeenJobs();equal(seen.accept("job-1"),true);equal(seen.accept("job-1"),false);equal(seen.accept(""),false);
         var events=new ArrayList<String>();
         Protocol.consume(new StringReader(": comment\r\n\r\nevent: job\r\ndata: first\r\ndata: second\r\n\r\nevent: job\ndata: incomplete"),(type,data)->events.add(type+":"+data));
