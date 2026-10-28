@@ -22,8 +22,17 @@ object AgentState {
     @Volatile var status = "访问已关闭"
     @Volatile var lastAction = "尚无手机操作"
     @Volatile var connected = false
+        private set
     @Synchronized fun enable(): Long { generation++; enabledAt = System.currentTimeMillis(); enabled = true; return generation }
     @Synchronized fun disable() { enabled = false; generation++; connected = false; status = "访问已关闭" }
+    @Synchronized fun connect(session: Long): Boolean {
+        if (!enabled || generation != session) return false
+        connected = true; return true
+    }
+    @Synchronized fun disconnect(session: Long): Boolean {
+        if (!enabled || generation != session) return false
+        connected = false; return true
+    }
     fun check(session: Long, expires: Long = System.currentTimeMillis() + 1000) =
         Protocol.checkJob(enabled, generation, session, expires, System.currentTimeMillis())
 }

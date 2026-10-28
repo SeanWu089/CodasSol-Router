@@ -30,8 +30,16 @@ class AgentService : Service() {
     private var serverSessionStart = 0L
     private var serverOffset = 0L
     private var wakeLock: PowerManager.WakeLock? = null
+    @Synchronized private fun trace(message: String) {
+        try {
+            val file = java.io.File(filesDir, "connection-diagnostics.txt")
+            if (file.length() > 65_536) file.writeText("")
+            file.appendText("${System.currentTimeMillis()} ${SystemClock.elapsedRealtime()} $message\n")
+        } catch (_: Exception) { /* diagnostics must not affect connectivity */ }
+    }
     private fun state(message: String) {
         if (AgentState.generation != session) return
+        trace(message)
         AgentState.status = message
         android.util.Log.i("CodasPhone", message)
         getSystemService(NotificationManager::class.java).notify(1, notification(message))
@@ -77,18 +85,20 @@ class AgentService : Service() {
                 pairing = ""
                 val credential = token!!
                 workers.scheduleWithFixedDelay({
+                    val activeStream = streamId
                     try {
                         keepAwake()
-                        val activeStream = streamId
                         if (AgentState.connected && activeStream != null && SystemClock.elapsedRealtime() - lastPositive >= 20_000) {
                             json("/heartbeat", credential, store.metadata().put("streamId", activeStream))
-                            lastPositive = SystemClock.elapsedRealtime()
+                            trace("heartbeat_ok")
+                            if (streamId == activeStream) lastPositive = SystemClock.elapsedRealtime()
                         }
                     } catch (e: Exception) {
                         if (AgentState.enabled && AgentState.generation == session) state("连接确认失败，正在恢复：${safeError(e)}")
-                        releaseConnections()
+                        if (activeStream != null && streamId == activeStream) releaseConnections()
                     }
                 }, 5, 5, TimeUnit.SECONDS)
+                var previousStream: String? = null
                 var failures = 0
                 while (AgentState.enabled && AgentState.generation == session) {
                     var readyAt = 0L
@@ -98,6 +108,7 @@ class AgentService : Service() {
                             readTimeout = 35_000; setRequestProperty("Accept", "text/event-stream")
                             setRequestProperty("Accept-Encoding", "identity")
                             setRequestProperty("X-Codas-Stream-Lease", "1")
+                            previousStream?.let { setRequestProperty("X-Codas-Previous-Stream", it) }
                         }
                         try {
                             checkStatus(connection)
@@ -111,13 +122,15 @@ class AgentService : Service() {
                                         require(ready.getString("deviceId") == store.deviceId && ready.getInt("protocol") == 1) { "PROTOCOL_MISMATCH" }
                                         require(ready.optLong("leaseMs") == 90_000L) { "ROUTER_LEASE_UPGRADE_REQUIRED" }
                                         streamId = ready.getString("streamId")
+                                        previousStream = streamId
                                         val serverTime = ready.getLong("serverTime")
                                         serverOffset = System.currentTimeMillis() - serverTime
                                         if (serverSessionStart == 0L) serverSessionStart = serverTime
                                         readyAt = System.currentTimeMillis(); lastPositive = SystemClock.elapsedRealtime()
-                                        AgentState.connected = true; state("已连接 · 后台访问开启")
+                                        check(AgentState.connect(session)) { "ACCESS_DISABLED" }; state("已连接 · 后台访问开启")
                                     }
                                     "job" -> {
+                                        trace("job_received")
                                         require(readyAt > 0) { "MISSING_READY" }
                                         val job = JSONObject(data).getJSONObject("job")
                                         val id = job.getString("id")
@@ -141,8 +154,7 @@ class AgentService : Service() {
                             throw IllegalStateException("STREAM_CLOSED")
                         } finally { streamId = null; connections.remove(connection); connection.disconnect() }
                     } catch (e: Exception) {
-                        AgentState.connected = false
-                        if (!AgentState.enabled || AgentState.generation != session) break
+                        if (!AgentState.disconnect(session)) break
                         if (e is Rejected && e.status in listOf(401,403,404)) throw e
                         failures = if (readyAt > 0 && System.currentTimeMillis() - readyAt >= 60_000) 1 else min(failures + 1, 6)
                         state(if (e is Rejected && e.status == 409) "旧连接正在释放，自动重连中" else "网络中断，自动重连：${safeError(e)}")
@@ -169,6 +181,8 @@ class AgentService : Service() {
     }
     private fun json(path: String, token: String, body: JSONObject): JSONObject {
         val c = connection(path, token)
+        val started = SystemClock.elapsedRealtime()
+        trace("post_start $path")
         try {
             c.requestMethod = "POST"; c.doOutput = true; c.setRequestProperty("Content-Type", "application/json")
             c.outputStream.use { it.write(body.toString().toByteArray()) }; checkStatus(c)
@@ -179,7 +193,13 @@ class AgentService : Service() {
             }
             require(bytes.size <= 1_048_576) { "RESPONSE_TOO_LARGE" }
             return JSONObject(String(bytes, Charsets.UTF_8))
-        } finally { connections.remove(c); c.disconnect() }
+        } catch (e: Exception) {
+            trace("post_error $path ${safeError(e)}")
+            throw e
+        } finally {
+            trace("post_end $path ${SystemClock.elapsedRealtime() - started}ms")
+            connections.remove(c); c.disconnect()
+        }
     }
     @Synchronized fun disable() {
         store.requestAccess(false)

@@ -172,3 +172,15 @@ real deployment identities and addresses in accordance with `SECURITY.md`.
 
 - [x] Build preview.3 with explicit same-signer/newer-version Agent update and prepare USB-free browser bootstrap delivery for existing preview.2.
 - [ ] AND-08 — On preview.3 or newer, request update_agent with a newer same-signed APK, approve on phone and reopen Codas; verify agent_version_code. Expected: successful upgrade retaining pairing; wrong signer/equal or lower versions rejected. JVM gates passed, full device update not yet verified.
+
+### Latest Android acceptance status (2026-10-28)
+
+- AND-01 / AND-04: preview.3 unplugged operation and counters 2/2 explicitly confirmed by user; preview.4 awaiting retest after connection-state repair.
+- AND-06: **failed on extended preview.3 run** — user observed repeated old-connection release/connecting after initial 113-second screen-off success. Preview.4 diagnostic build installed; investigate and retest before integration.
+- AND-07: automated interruption/recovery succeeded on preview.3; separate user acceptance still pending.
+- AND-08: wireless self-update attempt timed out; no successful on-phone upgrade acceptance. Preview.4 installed with temporary USB for diagnosis.
+- Keep PR #2 draft until wireless/background acceptance; do not remove worktrees or discard uncommitted work.
+
+- AND-06 preview.4: **failed**, repeated request timeout during extended lock/unplug test; user confirmed unplugged. Retrieve phone connection diagnostics without resetting switch/application, then repair and retest.
+
+- AND-06 preview.5: awaiting retest after exact previous-stream replacement. Preserve preview.3/.4 failures above. Need sustained unplugged locked info, unlock visual controls, and AND-02 switch-off rejection before merging PR #2. Public-network intermittent TCP timeouts remain under investigation.

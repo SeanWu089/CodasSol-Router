@@ -10,8 +10,15 @@ export class AgentHub {
 
   // One authenticated task consumer per device. In particular, replacing a
   // live stream could silently route a job to the wrong/old connection.
-  subscribe(deviceId, deliver, close = () => {}, { leaseMs = 0 } = {}) {
+  subscribe(deviceId, deliver, close = () => {}, { leaseMs = 0, previousStreamId } = {}) {
     this.expireStream(deviceId);
+    const previous = this.#streams.get(deviceId);
+    // Only the authenticated device possessing the exact leased stream ID can
+    // replace its broken downstream. Stale attempts cannot evict a successor.
+    if (leaseMs > 0 && previous?.leaseMs && previous.id === previousStreamId) {
+      this.#streams.delete(deviceId);
+      try { previous.close(); } catch { /* replacement owns cleanup */ }
+    }
     if (this.#streams.has(deviceId) || this.#waiters.has(deviceId)) {
       throw Object.assign(new Error("Agent already has a task consumer"), {
         code: "AGENT_CONSUMER_ACTIVE"

@@ -485,7 +485,7 @@ async function handleAgentRoute(req, res, runtime) {
       unsubscribe = runtime.agentHub.subscribe(
         identity.id, (job) => sendEvent("job", { job }),
         () => { if (!res.destroyed) res.destroy(); },
-        { leaseMs }
+        { leaseMs, previousStreamId: leased ? req.headers["x-codas-previous-stream"] : undefined }
       );
     } catch (error) {
       sendJson(res, 409, { error: error.code || "agent_consumer_active" });
