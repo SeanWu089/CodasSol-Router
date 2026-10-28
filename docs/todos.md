@@ -6,8 +6,8 @@
   prepare a separate public-safe source snapshot from published history.
 - [x] Add CI coverage for `develop` and portable production-helper tests.
 - [x] Verify 53 Node tests and the initial 13 isolated Python tests, shell syntax and diff hygiene.
-- [ ] Integrate the public source PR into `develop` after its GitHub checks and
-  review. Branch publication and automated-check results are tracked on GitHub.
+- Integration gate: [PR #1](https://github.com/SeanWu089/CodasSol-Router/pull/1)
+  targets `develop`; its merge status and CI results on GitHub are authoritative.
 - [ ] Review other unpublished branch/tag histories separately before pushing;
   preserve branches containing device-specific deployment records locally.
 - [ ] Reconcile production-only Router modules before any whole-source runtime
@@ -15,6 +15,8 @@
 - [x] Reproduce and fix deployment serialization, externally linked inputs,
   foreign-current protection and durable interruption recovery; verify the
   expanded isolated regression suite before integration.
+- [x] Verify 26 helper tests, including recovery to the previous release when
+  an interrupted candidate is missing or damaged; retain all 53 Node tests.
 - [ ] Before production adoption, rehearse the updated helper in an authorized
   maintenance window after reconciling production-only modules. Physical
   sleep/wake, restart and reboot acceptance is still outstanding.

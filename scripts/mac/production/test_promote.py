@@ -225,6 +225,21 @@ m.activate('new')
                 p.activate('linked')
             restart.assert_not_called()
 
+    def test_recovery_restores_previous_when_candidate_is_missing(self):
+        p.shutil.rmtree(self.releases / 'new')
+        for phase in ['prepared', 'verified']:
+            self.current.unlink()
+            self.current.symlink_to('releases/new')
+            (self.root / 'activation.json').write_text(json.dumps({
+                'version': 1, 'phase': phase,
+                'previous': 'releases/old', 'candidate': 'releases/new'}))
+            with self.subTest(phase=phase), \
+                    mock.patch.object(p, 'restart_router', return_value=True), \
+                    mock.patch.object(p, 'healthy', return_value=True):
+                self.assertEqual(p.recover_pending(), 0)
+            self.assertEqual(os.readlink(self.current), 'releases/old')
+            self.assertFalse((self.root / 'activation.json').exists())
+
     def test_link_introduced_during_copy_is_rejected_before_execution(self):
         external = Path(self.temp.name) / 'external.json'
         external.write_text('{}')

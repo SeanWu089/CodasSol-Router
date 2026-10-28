@@ -67,7 +67,7 @@ def reject_symlinks(paths, excluded=()):
             if entry not in excluded and entry.is_symlink():
                 raise RuntimeError('Release input contains a symlink: ' + str(entry))
 
-def checked_release_target(target):
+def release_target_path(target):
     if not isinstance(target, str) or not target:
         raise RuntimeError('Invalid release target')
     path = Path(target)
@@ -75,7 +75,13 @@ def checked_release_target(target):
     if target != expected or path.name in ('', '.', '..'):
         raise RuntimeError('Invalid release target')
     release = path if path.is_absolute() else ROOT / path
-    if RELEASES.is_symlink() or release.is_symlink() or not (release / 'src/server.js').is_file():
+    if RELEASES.is_symlink():
+        raise RuntimeError('Invalid releases directory symlink')
+    return release
+
+def checked_release_target(target):
+    release = release_target_path(target)
+    if release.is_symlink() or not (release / 'src/server.js').is_file():
         raise RuntimeError('Invalid release directory')
     reject_symlinks([release])
     return release
@@ -109,8 +115,9 @@ def read_journal():
         record = json.loads(path.read_text())
         if record.get('version') != 1 or record.get('phase') not in ('prepared', 'verified'):
             raise ValueError('Invalid journal schema')
-        checked_release_target(record['previous'])
-        checked_release_target(record['candidate'])
+        # A damaged/missing candidate must not prevent rollback to an intact previous release.
+        release_target_path(record['previous'])
+        release_target_path(record['candidate'])
         return record
     except (ValueError, KeyError, TypeError, AttributeError) as exc:
         raise RuntimeError('Invalid activation journal; preserve it for review') from exc
@@ -173,7 +180,12 @@ def recover_locked():
     if record is None:
         return True
     if record['phase'] == 'verified' and CURRENT.is_symlink() and os.readlink(CURRENT) == record['candidate']:
-        if healthy(expected=record['candidate']):
+        try:
+            checked_release_target(record['candidate'])
+            candidate_healthy = healthy(expected=record['candidate'])
+        except (RuntimeError, OSError):
+            candidate_healthy = False
+        if candidate_healthy:
             check_current(record['candidate'])
             clear_journal()
             return True
