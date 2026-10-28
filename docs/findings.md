@@ -1,5 +1,11 @@
 # Findings
 
+## 2026-10-28 — Active runtime source reconciliation
+
+- Compared all 22 active production JavaScript modules against integrated source. Recovered nine differing/new modules covering SSE task delivery/deadlines, scoped heartbeat TTL, installation-preserving enrollment, peer diagnostics/TLS address pins, and sanitized traffic accounting. Excluded three historical backup files. No runtime state, secrets or fixed deployment endpoints were copied.
+- Two intentional differences from runtime: synthetic runtimes do not default to the owner's persisted usage directory; an obsolete transport comment is corrected. Real runtime accounting uses its explicit stateDir. PR #1 production helpers remain unchanged.
+- Verification: 80 Node tests and 26 isolated production-helper Python tests passed. Tests include real loopback SSE enrollment/job/result exchange. Physical device and production behavior remain separately unverified; production was not restarted or redeployed.
+
 ## 2026-10-28 — Public source synchronization
 
 - Unpublished local history includes deployment-specific observations. Public
@@ -126,3 +132,48 @@ Cloudflared lost all four connections after DNS timeouts while its process remai
 
 ## 2026-10-23 — Mac Cloudflare migration branch
 Reason: ngrok free quota exceeded; Sean purchased example.com and configured Cloudflare Tunnel for the Mac ingress. Branch fix/mac-cloudflare-recovery starts at main 9b05007, not Android development. Includes fail-closed backend authorization with stable ping protocol and tunnel readiness supervision. Automated verification: 53 Node tests and 5 supervisor tests passed. Production has newer source enhancements not yet reconciled here; this branch is not a whole-source production deployment candidate.
+
+
+## 2026-10-28 — Android wireless execution findings
+
+- Production comparison was completed using local Codex filesystem access explicitly requested by the owner; no Codas workspace-policy change or shell bypass through the Codas connector was needed. Nine active source modules were recovered in 37fbce9; historical backup files were excluded. Source tests use explicit traffic-state directories instead of writing owner runtime state. This source checkpoint is not a production deployment.
+- Android preview uses a native outbound HTTPS/SSE Agent and existing Router MCP envelopes; `/codas/android` exposes bounded phone operations, not arbitrary shell/filesystem. Compilation remains off-device. Verified execution used authenticated public MCP HTTP calls from local tools, not an actual ChatGPT connector invocation in this acceptance run.
+- Physical unplugged preview.1 installation/launch/screenshot/tap/swipe succeeded; user confirmed Test Pad counters 1/1. The phone used its own mobile-data connectivity, and no ADB reverse was configured. USB was used to install/update Codas and run native instrumentation only.
+- Closing access invalidates the generation, closes streams and cancels pending downloads/installation work. An already dispatched Android gesture may finish (bounded to 1.5 seconds). Already completed installation/actions are not undone. Router offline detection can briefly lag; preview.2 rejects a job whose creation predates the current enabled session to prevent a queued request running after re-enable. Timestamp checks require reasonably synchronized automatic clocks on Router and phone; cross-device clock-skew behavior remains a limitation.
+- Running instrumentation or force-stopping/upgrading the app may leave this OEM's enabled accessibility service unbound/stopped. User re-toggling Codas Test Control restored service during preview.1 tests; avoid instrumentation after enabling access. Keep debug test APK separate and remove it after development setup.
+- APK installation supports one HTTPS APK (512 MiB maximum), mandatory SHA-256 and package verification, and user-mediated Android system confirmation. Split packages, root, silent installation, general shell/logcat, prolonged background reliability and autonomous coordinator failover are not implemented/verified.
+- A public offline phone request may appear as a generic Cloudflare 502; the local Router response verified DEVICE_OFFLINE. Do not report every edge 502 as an authentication failure or evidence of phone execution.
+
+
+## 2026-10-28 — Android reconnect repair in progress
+
+- User reported preview.2 stayed at “连接中” and appeared to disconnect after screen-off/leaving the app. USB inspection found “连接停止：HTTP_409” and no running AgentService. Available process-exit history showed update/instrumentation stops, not a new screen-off process kill; do not assert OEM killing was proven. Router retained a sole stale SSE consumer and rejected the replacement.
+- Added opt-in 90-second stream leases with exact-stream authenticated acknowledgements, expiry before admission/dispatch and stale-ACK rejection. Legacy SSE consumers remain exclusive and unleased. Phone retries temporary conflicts, uses server time for the initial task cutoff, exposes connection phases, and clears sockets away from the UI thread.
+- Preview.3 adds current-boot-only persisted access intent, sticky foreground-service recovery, bounded renewed partial wake lock while access is on, and a user-confirmed battery-exemption entry. Explicit off releases resources; no boot receiver. Lock-screen visual operations remain rejected.
+- Verification so far: 83 Node tests, 26 Python release tests, Android build/lint passed. Existing installed deployment helper was backed up, updated from reviewed PR #1 safeguards while preserving private default paths/health origin, then dry-run and guarded Router rollout passed local/public health. This does not prove phone acceptance.
+- Phone APK installation was interrupted because the physical USB device disappeared. Preview.3 is built but installation/physical acceptance remains pending; user asked to reconnect.
+
+- Wireless update bootstrap: the installed preview.2 rejects installing its own package and currently reports offline. User declined USB and requested Codas delivery. Preview.3 now exposes explicit update_agent with HTTPS/hash/package checks, matching installed signer set and strictly increasing versionCode; ordinary install still rejects self-install. Build/lint, 23 JVM boundary checks and APK signature verification passed. This self-update path still awaits device acceptance. One-time preview.2 upgrade is provided as a browser APK download; user Android installation confirmation remains required. Temporary download hosting is limited to the update page/APK; stop it after acceptance.
+
+## 2026-10-28 — Extended Android reconnect investigation
+
+- Preview.3 completed unplugged launch/screenshot/tap/swipe; user confirmed Test Pad counters 2/2 and screen-off. Automated locked info requests succeeded through 113 seconds, and a separate network interruption recovered. These short checks did not establish extended reliability: user subsequently reported repeated “旧连接正在释放 / 连接中”, with failed remote requests. AND-06 remains failed/pending repair.
+- USB inspection found the application process and foreground service alive, battery exemption active and no effective network-policy block. A forced-Doze info request also succeeded; do not attribute the loop to proven OEM process killing.
+- Preview.4 installed via USB for diagnostics. Old access-session callbacks can no longer change a newer session’s connected flag; four JVM regression assertions pass. Connection phase/POST timing diagnostics are bounded to 64 KiB and exclude credentials, request bodies and device content. Extended physical acceptance remains pending.
+- User prefers automatic USB detection/use during authorized phone debugging, without repeated plugged-in confirmation questions. Final acceptance remains unplugged and wireless.
+
+- Preview.4 diagnostics: ready frame received immediately after HTTP headers; subsequent heartbeats and two public info requests succeeded while locked; a subsequent request remained pending after about three minutes. USB remained physically attached (no ADB reverse), so this is not unplugged acceptance. The speculative SSE character-buffer explanation was not confirmed and no parser change was made. Temporary debug attachment and APK delivery tunnel/server were stopped.
+
+- Preview.4 extended test reproduced failure: public info timed out while preceding phone heartbeat POSTs still reached Router. USB unplug was explicitly confirmed and detected; request failure/stream conflict recurred. The session-state fix alone is insufficient. Need retrieve bounded phone diagnostics for the failure window; do not merge or claim resolved.
+
+- Failure-window diagnostics confirmed SSE read timeout while recent independent heartbeat POSTs had renewed the old lease; reconnect then returned consumer-active conflicts. Plain HTTPS health probes from the phone also intermittently timed out before TCP connection on both address families. Network reachability is a separate unresolved factor, not proof of an Android process kill.
+- Preview.5 adds authenticated exact previous-stream replacement for leased consumers; mismatched/stale IDs and legacy consumers remain exclusive. Old heartbeat failures no longer tear down a different stream. Regression first failed with AGENT_CONSUMER_ACTIVE, then passed; complete Node suite 84/84, Android build/lint and 23 protocol + 4 session assertions passed. Guarded production rollout and USB installation completed; physical acceptance still pending.
+
+- Preview.5 live recovery check: phone data network disabled briefly with an on-phone 20-second restoration watchdog; original data-on/Wi-Fi-off state restored and verified. Without reopening Codas/re-pairing/toggling access, Agent reconnected and answered info; no consumer-conflict wait in that recovery window. Background execution also succeeded while another app was foreground. This automated test is separate from final unplugged user acceptance. PR #2 CI passed on 37e1911.
+
+- Preview.5 unplugged continuation: user clarified the newly received “connecting again” message referred to an older run, not a new preview.5 failure. Six public info requests succeeded over 170 seconds (1.8–5.4 s each), with five locked samples and one user-unlocked sample. Router recorded a replacement stream during this window and later requests succeeded. This is bounded evidence, not an indefinite-connectivity guarantee.
+
+- Preview.5 Test Pad launch initially timed out, then a fresh request succeeded; screenshot verified the target before gestures. Wireless tap/swipe advanced counters from 2/2 to 3/3; user explicitly confirmed 3/3. This retained success does not erase the preceding transient timeout.
+- Review found an untested callback race: checking a stream ID before closing a global connection snapshot was not atomic; stale heartbeat errors could overwrite replacement status. Preview.6 uses a stream-specific handle and one synchronization boundary for ready/ACK/failure publication, and disconnects only the captured SSE. A controlled stale/interleaving regression failed before the fix and passes after it. Build/lint and JVM checks pass; updated APK still awaits wireless installation.
+
+- Final Preview.6 observation: five public locked requests over 180 seconds returned four successes and one 45-second timeout, followed by automatic recovery. An independent local-entry request to the still-wireless locked phone returned in about one second. User confirmed the homepage recovered to connected, then off/on cycle; off returned DEVICE_OFFLINE after detection lag, fresh on request succeeded at version 7. Preserve public-network instability as unresolved; do not claim uninterrupted availability or reproduce old queued mutations as physically proven. Wireless self-update was user-confirmed and temporary hosting terminated.

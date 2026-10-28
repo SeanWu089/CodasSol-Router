@@ -1,5 +1,10 @@
 # Thoughts
 
+## 2026-10-28 — Android scope decision
+
+- Approved: native Android Agent with wireless outbound authenticated connection, local access switch and normal on-device system confirmations. Build location may be any suitable computer/cloud worker; the phone is the installation and test target. This is confirmed work in todos.md.
+- Long-term replaceable online ingress/coordinator remains deferred. This stage reuses the existing entry and exposes a configurable endpoint; it does not implement distributed ingress failover or unattended privileged Android control.
+
 - 2026-10-13 confirmed: use only the existing free ingress plan and optimize away redundant peer traffic. Windows native Git checkout is `<Windows development checkout>`, development branch `feat/windows-standalone-node-v0.2`, accessed through authenticated outbound SSE. Use that directory for Windows work; preserve standalone runtime/credentials separately and do not resume Tailscale routing.
 
 - 2026-10-13 confirmed transport constraint: CodasSol must not use Tailscale. Outbound authenticated SSE job delivery through the public ingress is the intended cross-device path; ingress takeover is separate. Historical optional-Tailscale suggestions below are superseded. Keep the user's unrelated Tailscale setup intact. Mac product peer removed; Windows reciprocal cleanup and SSE deployment remain pending.
@@ -83,3 +88,8 @@ Measure handoff correctness, stale-memory rate, recovery after interruption, tok
 ## 2026-10-22 — Unconfirmed isolation direction
 
 Security audit showed remote shell commands run with Sean's account permissions beyond Desktop allowedRoots. Consider a dedicated low-privilege OS account, container/sandbox, or narrower per-tool permissions; no particular isolation design or restrictions have been approved yet. Preserve useful remote development functionality while separating private credentials from remote command access.
+
+
+## 2026-10-28 — Distributed phone-node scope
+
+The user's longer-term direction is a distributed Codas network with a replaceable active entry/coordinator among online computers, rather than a permanently required personal computer. The confirmed current stage is a wireless Android execution/test node using the existing ingress, with compilation on a computer/cloud and an explicit phone access switch. Automatic coordinator selection/failover and distributed project-state synchronization remain deferred ideas, not part of this Android preview.

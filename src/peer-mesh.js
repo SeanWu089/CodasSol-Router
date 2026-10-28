@@ -1,5 +1,8 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { isIP } from "node:net";
+import { createPinnedPeerFetch } from "./peer-transport.js";
+import { peerFailureCode } from "./peer-diagnostics.js";
 import { RoutingDecisionError } from "./routing-policy.js";
 
 const PROTOCOL = 2;
@@ -24,6 +27,13 @@ function validatePeer(input, localDeviceId, allowInsecurePeers) {
     throw new Error(`Peer ${id} has invalid roots`);
   }
   const url = new URL(input.url);
+  if (url.hostname.toLowerCase().endsWith(".ts.net")) {
+    throw new Error("CodasSol does not permit Tailscale peer endpoints; use the authenticated outbound channel");
+  }
+  if (input.connectAddress !== undefined &&
+      (typeof input.connectAddress !== "string" || !isIP(input.connectAddress) || url.protocol !== "https:")) {
+    throw new Error(`Peer ${id} connectAddress must be an IP address with HTTPS`);
+  }
   const loopback = ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname);
   if (url.protocol !== "https:" &&
     !(url.protocol === "http:" && (loopback || allowInsecurePeers))) {
@@ -34,7 +44,7 @@ function validatePeer(input, localDeviceId, allowInsecurePeers) {
     throw new Error(`Peer ${id} URL must be an origin without credentials, path or query`);
   }
   return {
-    id, token, url: url.origin,
+    id, token, url: url.origin, connectAddress: input.connectAddress || null,
     installationId: input.installationId || null,
     platform: platform || "unknown",
     label: input.label || id,
@@ -48,7 +58,9 @@ async function peerRequest(peer, endpoint, {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetchFn(`${peer.url}${endpoint}`, {
+    const transport = peer.connectAddress && fetchFn === fetch
+      ? createPinnedPeerFetch(peer.connectAddress) : fetchFn;
+    const response = await transport(`${peer.url}${endpoint}`, {
       method,
       redirect: "error",
       headers: {
@@ -59,7 +71,7 @@ async function peerRequest(peer, endpoint, {
       signal: controller.signal
     });
     if (!response.ok) {
-      throw new Error(`Peer ${peer.id} responded HTTP ${response.status}`);
+      throw Object.assign(new Error(`Peer ${peer.id} responded HTTP ${response.status}`), { statusCode: response.status });
     }
     return await response.json();
   } finally {
@@ -96,6 +108,7 @@ export class PeerMesh {
   }
 
   static async load(runtime, config, options = {}) {
+    if (config.outboundOnly) return new PeerMesh({ runtime, peers: [], ...options });
     const filename = config.peersFile || path.join(runtime.stateDir, "peers.json");
     let peers = [];
     try {
@@ -115,17 +128,29 @@ export class PeerMesh {
   async refresh() {
     if (this.refreshPending) return this.refreshPending;
     const pending = Promise.all([...this.peers.values()].map(async (peer) => {
+      const started = performance.now();
+      let phase = "transport";
       try {
         const info = await peerRequest(peer, "/_codassol/peer/info", {
-          fetchFn: this.fetchFn
+          // Remote TLS handshakes can take longer than the 2.5s used for
+          // ordinary metadata calls. Do not mark a healthy execution host
+          // offline merely because this identity/health probe needed 3-5s.
+          // A genuinely unreachable node still fails closed after 8s.
+          fetchFn: this.fetchFn, timeoutMs: 8000
         });
-        if (info.protocol !== PROTOCOL || info.id !== peer.id ||
-            !Array.isArray(info.roots) || typeof info.platform !== "string") {
-          throw new Error(`Peer identity or protocol mismatch for ${peer.id}`);
+        if (!info || typeof info !== "object" || !Array.isArray(info.roots) || typeof info.platform !== "string") {
+          throw Object.assign(new Error("Invalid peer metadata"), { code: "INVALID_RESPONSE" });
+        }
+        if (info.protocol !== PROTOCOL) {
+          throw Object.assign(new Error("Peer protocol mismatch"), { code: "PROTOCOL_MISMATCH" });
+        }
+        if (info.id !== peer.id) {
+          throw Object.assign(new Error("Peer identity mismatch"), { code: "IDENTITY_MISMATCH" });
         }
         if (peer.installationId && peer.installationId !== info.installationId) {
-          throw new Error(`Peer installation identity mismatch for ${peer.id}`);
+          throw Object.assign(new Error("Peer installation identity mismatch"), { code: "IDENTITY_MISMATCH" });
         }
+        phase = "catalog";
         await this.runtime.catalog.observe({
           id: peer.id, defaultName: info.label || peer.id,
           platform: info.platform, kind: "router",
@@ -135,7 +160,10 @@ export class PeerMesh {
           reachable: true,
           backendReachable: info.backendReachable === true,
           lastOnlineAt: Date.now(),
-          checkedAt: Date.now()
+          checkedAt: Date.now(),
+          durationMs: Math.round(performance.now() - started),
+          consecutiveFailures: 0,
+          failureCode: null
         });
         this.runtime.devices.register({
           id: peer.id, platform: info.platform,
@@ -160,12 +188,15 @@ export class PeerMesh {
             });
           } catch { /* retry next probe; routing remains available */ }
         }
-      } catch {
+      } catch (error) {
         const previousHealth = this.peerHealth.get(peer.id);
         this.peerHealth.set(peer.id, {
           reachable: false, backendReachable: false,
           lastOnlineAt: previousHealth?.lastOnlineAt ?? null,
-          checkedAt: Date.now()
+          checkedAt: Date.now(),
+          durationMs: Math.round(performance.now() - started),
+          consecutiveFailures: (previousHealth?.consecutiveFailures || 0) + 1,
+          failureCode: peerFailureCode(error, phase)
         });
         const previous = this.runtime.devices.get(peer.id);
         if (previous) this.runtime.devices.heartbeat(peer.id, { enabled: false });

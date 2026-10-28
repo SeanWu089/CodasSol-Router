@@ -1,5 +1,16 @@
 # Todos
 
+## 2026-10-28 — Reconciled runtime baseline
+
+- [x] Read production source directly with local tools; expanding connector allowed roots is unnecessary. Recover active runtime modules onto the PR #1 baseline and verify regressions (80 Node, 26 Python).
+- [ ] Integrate this source-reconciliation checkpoint into develop after the final branch review. Preserve PR #1 release-helper changes; runtime promotion is separate.
+- [ ] Android wireless Agent: paired HTTPS/SSE connection, local access switch, phone information command, APK installation with system confirmation, launch and accessibility screenshots/gestures. User approved ordinary Android authorization prompts; no USB dependency or on-phone build requirement.
+- [ ] AND-01: USB disconnected; enable phone access. Expected: correct phone discovery and successful phone-side identity operation. Awaiting implementation/physical acceptance.
+- [ ] AND-02: disable access, then request an action. Expected: no new phone action executes. Awaiting implementation/physical acceptance.
+- [ ] AND-03: deliver a known APK, confirm system installation, launch it. Expected: intended package/version runs without USB. Awaiting implementation/physical acceptance.
+- [ ] AND-04: grant control permission and test a screenshot/tap/swipe in an unlocked test app. Expected: observable intended transition. Awaiting implementation/physical acceptance.
+- [ ] AND-05: switch Wi-Fi/mobile data. Expected: recover the same phone identity without replaying expired actions. Awaiting implementation/physical acceptance.
+
 ## 2026-10-28 — GitHub synchronization
 
 - [x] Preserve the original private development branch and uncommitted files;
@@ -109,7 +120,7 @@ real deployment identities and addresses in accordance with `SECURITY.md`.
 - [x] Reproduce backend-error authentication fail-open in an isolated mock; prepare and deploy fail-closed ping verification without false OAuth401 responses. Latest version stable-20261022-112732-3aa1ac; 53 tests passed and actual Codas discovery/hostname verified.
 - [x] Enforce HTTPS/minimumTLS1.2 and loopback-only Router binding; preserve backups and verify HTTP301 plus loopback listeners.
 - [x] Verify restored Codas app through real workspace and command calls. Prior connector-migration execution item is complete; user-facing acceptance remains separate below.
-- [ ] Reconcile production-only src enhancements into canonical development source before the next general release. Do not overwrite newer production routing/SSE/traffic behavior with an older checkout.
+- [x] Reconcile production-only src enhancements in isolated source checkpoint 37fbce9 (2026-10-28); integration into develop and production promotion remain separate pending steps below.
 - [ ] Complete remaining security review scope (release/update scripts, mobile code, transitive dependency checks and intended physical Windows runtime) before any claim of a comprehensive all-platform audit. Do not infer Windows identity/readiness from Mac success.
 
 ### User acceptance — preserve reported reconnect failure
@@ -128,4 +139,67 @@ real deployment identities and addresses in accordance with `SECURITY.md`.
 - [ ] SEC-01 user acceptance: use Codas repeatedly without repeated owner-password login; awaiting explicit confirmation.
 - [ ] NET-03 user acceptance: after sleep/wake or network switching, verify automatic recovery; awaiting explicit confirmation.
 - [ ] CF-03 user acceptance: verify automatic startup after logout/login or reboot.
-- [ ] Reconcile production-only Router enhancements before general production promotion.
+- [x] Recover production-only Router enhancements into tested checkpoint 37fbce9 (2026-10-28); no production promotion performed.
+
+
+## 2026-10-28 — Android wireless preview checkpoint
+
+- [x] Compare active production source locally without expanding Codas allowed roots; recover routing/SSE/diagnostic/traffic modules on `fix/runtime-source-reconcile` (37fbce9), based on merged develop 2e339ef. 80 Node and 26 isolated Python checks passed. Production was not restarted or deployed.
+- [x] Implement native Android outbound HTTPS/SSE Agent, encrypted device credential, user-controlled access switch, bounded native commands, APK download/hash/package verification and explicit system installation confirmation; add permission-free Test Pad fixture.
+- [x] Build/install preview.2 (versionCode 3); build and lint passed (zero lint errors), 19 JVM protocol checks passed. Six native protocol checks passed on preview.1; debug instrumentation APK removed after setup. USB reverse list was empty.
+- [x] Verify public MCP path on preview.1: phone workspace/info, HTTPS APK download and system-confirmed installation, launch, screenshot, tap and swipe after unplugging USB. User explicitly confirmed installation/unplug and Taps: 1 / Swipes: 1.
+- [x] Add session-created-at guard to preview.2: reject jobs created before the current access session, alongside generation, expiry and deduplication checks. Router returned DEVICE_OFFLINE after the user disabled access. Stale-session rejection has JVM coverage; no real queued-job replay acceptance is claimed.
+- [ ] Finish preview.2 unplug/reconnect smoke test and user acceptance below.
+- [ ] Review/integrate source checkpoints into develop; keep production deployment and main promotion separate. Android work is isolated on `feat/android-wireless-agent`; develop ancestry is conflict-free at this checkpoint.
+
+### Android user acceptance (separate from automated checks)
+
+- [ ] AND-01 — Open access, unplug USB, keep phone unlocked; issue phone info and launch Test Pad through Codas. Expected: correct phone responds over Wi-Fi/mobile data. Preview.1 passed with explicit unplug confirmation; preview.2 awaiting retest after update.
+- [ ] AND-02 — Close access, then issue a phone request; reopen and send a new request. Expected: closed access rejects requests and old queued work does not execute after reopening. User confirmed closing preview.1; Router returned DEVICE_OFFLINE. Preview.2 stale-task guard automated checks passed; physical reopen/queued-task acceptance pending.
+- [x] AND-03 — Receive Test Pad APK, confirm installation on phone. Expected: installed app launches. Preview.1 user confirmed “已安装并拔线”; remote install status reported installed version 1.0 and launch/screenshot succeeded. No silent installation is promised.
+- [ ] AND-04 — With USB unplugged, remotely tap once and swipe once in Test Pad. Expected: both counters advance and screenshot agrees. Preview.1 user confirmed “计数正确” at Taps: 1 / Swipes: 1. Preview.2 awaiting retest following the access-session fix; prior success retained.
+- [ ] AND-05 — With access enabled, switch Wi-Fi/mobile network and briefly background Codas; return and issue a new request. Expected: reconnect without re-pairing. Untested; OEM battery restrictions, extended background operation and reboot remain unverified. Restarting the app/device deliberately leaves access off.
+
+
+## 2026-10-28 — Confirmed reconnect, integration and cleanup work
+
+- [x] Reproduce stale-consumer conflict and add bounded phone stream leases; regressions and guarded Router rollout passed.
+- [x] Install successive repairs through preview.6; bounded acceptance is recorded below and prior failures retained.
+- [ ] AND-06 — With access on and background permission granted, return Home/Back and lock the phone; issue info repeatedly, then unlock and run visual controls. Expected: connection survives background/lock; screenshot/gestures require unlock. User reported failure on preview.2; awaiting repaired-version retest.
+- [ ] AND-07 — Interrupt connectivity, restore it and issue a fresh request. Expected: automatic reconnect without re-pairing or manually restarting Codas, and old queued operations do not run. Awaiting physical test; lease expiry and old-ACK isolation passed automated checks.
+- [ ] After physical acceptance, integrate reviewed Android/reconciliation/recovery commits into develop (user explicitly authorized). Keep main separate.
+- [ ] After integration, remove only clean, fully merged, unused worktrees; preserve all dirty worktrees and unknown ignored artifacts. No blanket stash, reset or forced removal.
+
+- [x] Build preview.3 with explicit same-signer/newer-version Agent update and prepare USB-free browser bootstrap delivery for existing preview.2.
+- [ ] AND-08 — On preview.3 or newer, request update_agent with a newer same-signed APK, approve on phone and reopen Codas; verify agent_version_code. Expected: successful upgrade retaining pairing; wrong signer/equal or lower versions rejected. JVM gates passed, full device update not yet verified.
+
+### Latest Android acceptance status (2026-10-28)
+
+- AND-01 / AND-04: preview.3 unplugged operation and counters 2/2 explicitly confirmed by user; preview.4 awaiting retest after connection-state repair.
+- AND-06: **failed on extended preview.3 run** — user observed repeated old-connection release/connecting after initial 113-second screen-off success. Preview.4 diagnostic build installed; investigate and retest before integration.
+- AND-07: automated interruption/recovery succeeded on preview.3; separate user acceptance still pending.
+- AND-08: wireless self-update attempt timed out; no successful on-phone upgrade acceptance. Preview.4 installed with temporary USB for diagnosis.
+- Keep PR #2 draft until wireless/background acceptance; do not remove worktrees or discard uncommitted work.
+
+- AND-06 preview.4: **failed**, repeated request timeout during extended lock/unplug test; user confirmed unplugged. Retrieve phone connection diagnostics without resetting switch/application, then repair and retest.
+
+- AND-06 preview.5: awaiting retest after exact previous-stream replacement. Preserve preview.3/.4 failures above. Need sustained unplugged locked info, unlock visual controls, and AND-02 switch-off rejection before merging PR #2. Public-network intermittent TCP timeouts remain under investigation.
+
+- Preview.5 automated AND-07 recovery passed; final user acceptance pending. Next: unplugged lock test, unlocked Test Pad controls, then explicit off/reopen rejection check (AND-01/02/04/06). User asked to unplug and lock; do not mark passed until confirmed.
+
+- Preview.5 AND-01/06 automated unplugged continuation: 6/6 real public requests passed over 170 s, including five locked samples. User confirmed physical unplug/lock; corrected previous “connecting” remark as old feedback. Awaiting unlocked Test Pad and switch-off/reopen acceptance; do not classify that remark as a preview.5 failure.
+
+- AND-04 preview.5: user explicitly confirmed Test Pad Taps 3 / Swipes 3 after wireless launch/screenshot/tap/swipe. Preview.6 callback isolation is built, awaiting installation and transport retest; no server redeployment required.
+- AND-08: phone reports idle/install permission true. Preview.6 same-signer/higher-version APK ready. Temporary external download hosting was blocked by automatic approval review; explicit user approval requested before publishing.
+
+- AND-08: user explicitly approved temporary HTTPS publication of the single Preview.6 APK. Hosting established; phone accepted exactly one update_agent task and reported downloading. Await hash/package/signer/version verification, user system-install confirmation and post-update version check. Close temporary hosting after delivery.
+
+## 2026-10-28 — Android Preview.6 acceptance checkpoint
+
+- [x] AND-01 / AND-03 / AND-04 — User confirmed physically unplugged operation, Test Pad installation and counters 3/3 after wireless launch/screenshot/tap/swipe. Earlier 1/1 and 2/2 confirmations remain historical evidence.
+- [x] AND-02 basic switch cycle — User confirmed off; Router returned DEVICE_OFFLINE after presence detection lag. User reopened and confirmed remaining in Codas; a fresh info request succeeded on version 7. Session-generation/old-job cutoff checks passed automatically; physical replay of a queued mutation has not been demonstrated.
+- [x] AND-06 bounded background/recovery — Preview.5: 6/6 public requests over 170 seconds. Preview.6: 4/5 over 180 seconds while locked; one timed out and subsequent requests recovered without user intervention. User explicitly confirmed homepage had returned to connected before closing access. This passes bounded recovery, not uninterrupted public-network reliability.
+- [x] AND-08 wireless self-update — User approved temporary APK hosting and confirmed system installation/reopening without USB. Actual Preview.6/versionCode 7 and retained pairing/accessibility verified. APK download/hash/package/signature/version checks passed; temporary hosting stopped.
+- [ ] AND-05 / AND-07 extended physical network-switch/endurance acceptance remains open. A controlled short cellular interruption recovered automatically with original network settings restored, but no long-duration or reboot acceptance is claimed.
+- [x] Source checks — 84 Node / 26 Python release-helper tests, Android build/lint, 23 JVM protocol assertions, four access-session assertions and controlled stream-callback race tests passed. CI also runs pure protocol and stream checks.
+- Integration is authorized for this accepted preview checkpoint; retain intermittent public-network timeout as an unresolved limitation. Main promotion and distributed coordinator takeover remain outside scope.

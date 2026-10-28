@@ -1,4 +1,5 @@
 import http from "node:http";
+import { TrafficUsage, handleUsageRoute } from "./traffic-usage.js";
 import net from "node:net";
 import { pathToFileURL } from "node:url";
 import { loadConfig } from "./config.js";
@@ -11,6 +12,8 @@ import {
 } from "./mcp-routing.js";
 import { createRouterRuntime } from "./runtime.js";
 import { addRouterTools, deviceSnapshot } from "./mcp-device-tools.js";
+import { peerConnectivity } from "./peer-diagnostics.js";
+import { AGENT_SSE_PRESENCE_TTL_MS } from "./agent-timing.js";
 
 const HOP_BY_HOP = new Set([
   "connection",
@@ -319,6 +322,7 @@ async function handleDeviceRoute(req, res, config, runtime) {
         // A health probe is not equivalent to open_workspace + command execution.
         // No current Registry writer supplies a fresh end-to-end proof.
         executionVerified: null,
+        connectivity: peer ? peerConnectivity(health) : null,
         lastSeenAt: local ? Date.now() : peer ? (health?.lastOnlineAt ?? null)
           : routing?.lastSeenAt ?? null,
         revision: entry.rename?.revision ?? null
@@ -385,12 +389,14 @@ function ensureRegisteredDevice(runtime, identity, patch = {}) {
       platform: identity.platform,
       presence: "heartbeat",
       roots: patch.roots ?? identity.roots ?? [],
-      capabilities: patch.capabilities ?? identity.capabilities ?? []
+      capabilities: patch.capabilities ?? identity.capabilities ?? [],
+      ...(patch.heartbeatTtlMs ? { heartbeatTtlMs: patch.heartbeatTtlMs } : {})
     });
   }
   return runtime.devices.heartbeat(identity.id, {
     roots: patch.roots ?? existing.roots,
-    capabilities: patch.capabilities ?? existing.capabilities
+    capabilities: patch.capabilities ?? existing.capabilities,
+    ...(patch.heartbeatTtlMs ? { heartbeatTtlMs: patch.heartbeatTtlMs } : {})
   });
 }
 
@@ -403,8 +409,13 @@ async function handleAgentRoute(req, res, runtime) {
       return true;
     }
     const body = await readJsonBody(req);
+    const knownDevice = runtime.catalog.get(body.id);
+    const sameRouterInstallation = knownDevice?.kind === "router" &&
+      typeof knownDevice.installationId === "string" &&
+      body.installationId === knownDevice.installationId;
     if (body.id === runtime.localDeviceId || runtime.peerMesh?.peers.has(body.id) ||
-        (runtime.catalog.get(body.id) && !runtime.privateState.getAgent(body.id))) {
+        (knownDevice?.kind === "router" && !sameRouterInstallation) ||
+        (knownDevice && !runtime.privateState.getAgent(body.id) && !sameRouterInstallation)) {
       sendJson(res, 409, { error: "device_id_reserved_by_router_node" });
       return true;
     }
@@ -413,7 +424,8 @@ async function handleAgentRoute(req, res, runtime) {
       id: enrolled.agent.id,
       defaultName: enrolled.agent.label,
       platform: enrolled.agent.platform,
-      kind: "agent"
+      kind: sameRouterInstallation ? "router" : "agent",
+      ...(sameRouterInstallation ? { installationId: knownDevice.installationId } : {})
     });
     runtime.devices.register({
       id: enrolled.agent.id,
@@ -444,14 +456,93 @@ async function handleAgentRoute(req, res, runtime) {
 
   if (req.url === "/_codassol/agent/heartbeat" && req.method === "POST") {
     const body = await readJsonBody(req);
-    const device = ensureRegisteredDevice(runtime, identity, body);
+    if (body.streamId !== undefined && !runtime.agentHub.renewStream(identity.id, body.streamId)) {
+      sendJson(res, 409, { error: "stream_lease_expired" });
+      return true;
+    }
+    const device = ensureRegisteredDevice(runtime, identity, body.streamId ? { ...body, heartbeatTtlMs: 90_000 } : body);
     sendJson(res, 200, { ok: true, deviceId: device.id, online: device.online });
+    return true;
+  }
+
+  if (req.url === "/_codassol/agent/events" && req.method === "GET") {
+    // SSE is downstream-only. Agent results and positive liveness reports
+    // continue to use authenticated POSTs. Keepalive comments are not ACKs.
+    const sendEvent = (name, data) => {
+      if (res.destroyed || res.writableEnded) return false;
+      if (res.writableLength > 256_000) {
+        res.destroy();
+        return false;
+      }
+      res.write(`event: ${name}\ndata: ${JSON.stringify(data)}\n\n`);
+      return true;
+    };
+    const leased = req.headers["x-codas-stream-lease"] === "1";
+    const leaseMs = leased ? 90_000 : 0;
+    let unsubscribe;
+    try {
+      // Reserve the sole consumer before sending response headers.
+      unsubscribe = runtime.agentHub.subscribe(
+        identity.id, (job) => sendEvent("job", { job }),
+        () => { if (!res.destroyed) res.destroy(); },
+        { leaseMs, previousStreamId: leased ? req.headers["x-codas-previous-stream"] : undefined }
+      );
+    } catch (error) {
+      sendJson(res, 409, { error: error.code || "agent_consumer_active" });
+      return true;
+    }
+    ensureRegisteredDevice(runtime, identity, { heartbeatTtlMs: leaseMs || AGENT_SSE_PRESENCE_TTL_MS });
+    res.writeHead(200, {
+      "content-type": "text/event-stream; charset=utf-8",
+      "cache-control": "no-cache, no-transform",
+      "x-accel-buffering": "no",
+      "connection": "keep-alive"
+    });
+    res.flushHeaders();
+    sendEvent("ready", { deviceId: identity.id, protocol: 1, serverTime: Date.now(),
+      ...(leased ? { streamId: unsubscribe.streamId, leaseMs, heartbeatIntervalMs: 20_000 } : {}) });
+    const keepalive = setInterval(() => {
+      if (leased && runtime.agentHub.expireStream(identity.id)) return;
+      if (!res.destroyed && !res.writableEnded) {
+        if (res.writableLength > 256_000) {
+          res.destroy();
+          return;
+        }
+        res.write(": keepalive\n\n");
+      }
+    }, 20_000);
+    keepalive.unref?.();
+    let cleaned = false;
+    const cleanup = () => {
+      if (cleaned) return;
+      cleaned = true;
+      clearInterval(keepalive);
+      const owned = unsubscribe();
+      // Drop back to the legacy timeout only when a stream really closes;
+      // a GET request finishing by itself is not an SSE disconnection.
+      const device = runtime.devices.get(identity.id);
+      if (owned && device?.heartbeatTtlMs === AGENT_SSE_PRESENCE_TTL_MS) {
+        runtime.devices.setHeartbeatTtl(identity.id, 30_000);
+      }
+    };
+    res.once("close", cleanup);
+    req.once("close", () => {
+      // A finished GET request does not mean the response stream closed.
+      if (res.destroyed) cleanup();
+    });
     return true;
   }
 
   if (req.url === "/_codassol/agent/poll" && req.method === "POST") {
     ensureRegisteredDevice(runtime, identity);
-    const job = await runtime.agentHub.poll(identity.id);
+    let job;
+    try {
+      job = await runtime.agentHub.poll(identity.id);
+    } catch (error) {
+      if (error.code !== "AGENT_CONSUMER_ACTIVE") throw error;
+      sendJson(res, 409, { error: "agent_consumer_active" });
+      return true;
+    }
     sendJson(res, 200, { ok: true, job });
     return true;
   }
@@ -475,7 +566,10 @@ async function handleAgentRoute(req, res, runtime) {
 }
 
 export function createRouterServer(config = loadConfig(), runtime = null) {
-  return http.createServer(async (req, res) => {
+  const usage = new TrafficUsage({ stateDir: runtime?.stateDir || config.stateDir, persist: Boolean(runtime?.stateDir || config.stateDir) });
+  const server = http.createServer(async (req, res) => {
+    if (handleUsageRoute(req, res, runtime, usage)) return;
+    usage.track(req, res);
     try {
       if (await handlePeerRoute(req, res, config, runtime)) return;
     } catch (error) {
@@ -575,6 +669,8 @@ export function createRouterServer(config = loadConfig(), runtime = null) {
     req.once("aborted", () => upstream.destroy());
     req.pipe(upstream);
   });
+  server.once("close", () => usage.close());
+  return server;
 }
 
 export async function startRouter(config = loadConfig(), runtime = null) {
@@ -600,7 +696,10 @@ if (isMain) {
   console.log(
     `CodasSol Router listening on http://${config.listenHost}:${config.listenPort} -> http://${config.backendHost}:${config.backendPort}`
   );
-  const shutdown = () => server.close(() => process.exit(0));
+  const shutdown = () => {
+    server.codassolRuntime.agentHub.closeStreams();
+    server.close(() => process.exit(0));
+  };
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
 }

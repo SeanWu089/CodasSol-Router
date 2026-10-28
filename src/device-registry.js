@@ -40,6 +40,13 @@ function sanitizeDevice(input, now) {
   const roots = Array.isArray(input.roots)
     ? input.roots.map((root) => requireNonEmptyString(root, "device.roots[]"))
     : [];
+  // SSE Agents acknowledge liveness less frequently than legacy polling
+  // Agents. A scoped TTL avoids globally delaying legacy offline detection.
+  const heartbeatTtlMs = input.heartbeatTtlMs;
+  if (heartbeatTtlMs != null && (!Number.isInteger(heartbeatTtlMs) ||
+      heartbeatTtlMs < 1_000 || heartbeatTtlMs > 3_600_000)) {
+    throw new TypeError("device.heartbeatTtlMs must be 1-3600 seconds");
+  }
   return {
     id,
     label: input.label ? requireNonEmptyString(input.label, "device.label") : id,
@@ -53,6 +60,7 @@ function sanitizeDevice(input, now) {
       ? [...new Set(input.capabilities.map((item) => requireNonEmptyString(item, "device.capabilities[]")))]
       : [],
     enabled: input.enabled !== false,
+    ...(heartbeatTtlMs == null ? {} : { heartbeatTtlMs }),
     lastSeenAt: now
   };
 }
@@ -98,6 +106,19 @@ export class DeviceRegistry {
     return this.get(deviceId);
   }
 
+  setHeartbeatTtl(id, heartbeatTtlMs) {
+    const deviceId = requireNonEmptyString(id, "device id");
+    const existing = this.#devices.get(deviceId);
+    if (!existing) return null;
+    if (!Number.isInteger(heartbeatTtlMs) ||
+        heartbeatTtlMs < 1_000 || heartbeatTtlMs > 3_600_000) {
+      throw new TypeError("heartbeatTtlMs must be 1-3600 seconds");
+    }
+    // Changing timeout policy is not evidence the Agent was recently alive.
+    existing.heartbeatTtlMs = heartbeatTtlMs;
+    return this.get(deviceId);
+  }
+
   unregister(id) {
     return this.#devices.delete(requireNonEmptyString(id, "device id"));
   }
@@ -121,7 +142,8 @@ export class DeviceRegistry {
     const device = this.#devices.get(requireNonEmptyString(id, "device id"));
     if (!device || !device.enabled) return false;
     if (device.presence === "static") return true;
-    return this.#clock() - device.lastSeenAt <= this.#heartbeatTtlMs;
+    return this.#clock() - device.lastSeenAt <=
+      (device.heartbeatTtlMs ?? this.#heartbeatTtlMs);
   }
 
   matchPath(candidatePath) {
