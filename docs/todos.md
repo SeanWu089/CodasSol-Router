@@ -164,7 +164,7 @@ real deployment identities and addresses in accordance with `SECURITY.md`.
 ## 2026-10-28 — Confirmed reconnect, integration and cleanup work
 
 - [x] Reproduce stale-consumer conflict and add bounded phone stream leases; regressions and guarded Router rollout passed.
-- [ ] Install preview.3 and validate AND-01/02/04 again; prior preview.2 failure remains retained.
+- [x] Install successive repairs through preview.6; bounded acceptance is recorded below and prior failures retained.
 - [ ] AND-06 — With access on and background permission granted, return Home/Back and lock the phone; issue info repeatedly, then unlock and run visual controls. Expected: connection survives background/lock; screenshot/gestures require unlock. User reported failure on preview.2; awaiting repaired-version retest.
 - [ ] AND-07 — Interrupt connectivity, restore it and issue a fresh request. Expected: automatic reconnect without re-pairing or manually restarting Codas, and old queued operations do not run. Awaiting physical test; lease expiry and old-ACK isolation passed automated checks.
 - [ ] After physical acceptance, integrate reviewed Android/reconciliation/recovery commits into develop (user explicitly authorized). Keep main separate.
@@ -193,3 +193,13 @@ real deployment identities and addresses in accordance with `SECURITY.md`.
 - AND-08: phone reports idle/install permission true. Preview.6 same-signer/higher-version APK ready. Temporary external download hosting was blocked by automatic approval review; explicit user approval requested before publishing.
 
 - AND-08: user explicitly approved temporary HTTPS publication of the single Preview.6 APK. Hosting established; phone accepted exactly one update_agent task and reported downloading. Await hash/package/signer/version verification, user system-install confirmation and post-update version check. Close temporary hosting after delivery.
+
+## 2026-10-28 — Android Preview.6 acceptance checkpoint
+
+- [x] AND-01 / AND-03 / AND-04 — User confirmed physically unplugged operation, Test Pad installation and counters 3/3 after wireless launch/screenshot/tap/swipe. Earlier 1/1 and 2/2 confirmations remain historical evidence.
+- [x] AND-02 basic switch cycle — User confirmed off; Router returned DEVICE_OFFLINE after presence detection lag. User reopened and confirmed remaining in Codas; a fresh info request succeeded on version 7. Session-generation/old-job cutoff checks passed automatically; physical replay of a queued mutation has not been demonstrated.
+- [x] AND-06 bounded background/recovery — Preview.5: 6/6 public requests over 170 seconds. Preview.6: 4/5 over 180 seconds while locked; one timed out and subsequent requests recovered without user intervention. User explicitly confirmed homepage had returned to connected before closing access. This passes bounded recovery, not uninterrupted public-network reliability.
+- [x] AND-08 wireless self-update — User approved temporary APK hosting and confirmed system installation/reopening without USB. Actual Preview.6/versionCode 7 and retained pairing/accessibility verified. APK download/hash/package/signature/version checks passed; temporary hosting stopped.
+- [ ] AND-05 / AND-07 extended physical network-switch/endurance acceptance remains open. A controlled short cellular interruption recovered automatically with original network settings restored, but no long-duration or reboot acceptance is claimed.
+- [x] Source checks — 84 Node / 26 Python release-helper tests, Android build/lint, 23 JVM protocol assertions, four access-session assertions and controlled stream-callback race tests passed. CI also runs pure protocol and stream checks.
+- Integration is authorized for this accepted preview checkpoint; retain intermittent public-network timeout as an unresolved limitation. Main promotion and distributed coordinator takeover remain outside scope.
