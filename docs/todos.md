@@ -1,5 +1,16 @@
 # Todos
 
+## 2026-10-28 — Reconciled runtime baseline
+
+- [x] Read production source directly with local tools; expanding connector allowed roots is unnecessary. Recover active runtime modules onto the PR #1 baseline and verify regressions (80 Node, 26 Python).
+- [ ] Integrate this source-reconciliation checkpoint into develop after the final branch review. Preserve PR #1 release-helper changes; runtime promotion is separate.
+- [ ] Android wireless Agent: paired HTTPS/SSE connection, local access switch, phone information command, APK installation with system confirmation, launch and accessibility screenshots/gestures. User approved ordinary Android authorization prompts; no USB dependency or on-phone build requirement.
+- [ ] AND-01: USB disconnected; enable phone access. Expected: correct phone discovery and successful phone-side identity operation. Awaiting implementation/physical acceptance.
+- [ ] AND-02: disable access, then request an action. Expected: no new phone action executes. Awaiting implementation/physical acceptance.
+- [ ] AND-03: deliver a known APK, confirm system installation, launch it. Expected: intended package/version runs without USB. Awaiting implementation/physical acceptance.
+- [ ] AND-04: grant control permission and test a screenshot/tap/swipe in an unlocked test app. Expected: observable intended transition. Awaiting implementation/physical acceptance.
+- [ ] AND-05: switch Wi-Fi/mobile data. Expected: recover the same phone identity without replaying expired actions. Awaiting implementation/physical acceptance.
+
 ## 2026-10-28 — GitHub synchronization
 
 - [x] Preserve the original private development branch and uncommitted files;

@@ -1,5 +1,11 @@
 # Findings
 
+## 2026-10-28 — Active runtime source reconciliation
+
+- Compared all 22 active production JavaScript modules against integrated source. Recovered nine differing/new modules covering SSE task delivery/deadlines, scoped heartbeat TTL, installation-preserving enrollment, peer diagnostics/TLS address pins, and sanitized traffic accounting. Excluded three historical backup files. No runtime state, secrets or fixed deployment endpoints were copied.
+- Two intentional differences from runtime: synthetic runtimes do not default to the owner's persisted usage directory; an obsolete transport comment is corrected. Real runtime accounting uses its explicit stateDir. PR #1 production helpers remain unchanged.
+- Verification: 80 Node tests and 26 isolated production-helper Python tests passed. Tests include real loopback SSE enrollment/job/result exchange. Physical device and production behavior remain separately unverified; production was not restarted or redeployed.
+
 ## 2026-10-28 — Public source synchronization
 
 - Unpublished local history includes deployment-specific observations. Public

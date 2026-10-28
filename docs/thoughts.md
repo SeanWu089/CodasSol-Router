@@ -1,5 +1,10 @@
 # Thoughts
 
+## 2026-10-28 — Android scope decision
+
+- Approved: native Android Agent with wireless outbound authenticated connection, local access switch and normal on-device system confirmations. Build location may be any suitable computer/cloud worker; the phone is the installation and test target. This is confirmed work in todos.md.
+- Long-term replaceable online ingress/coordinator remains deferred. This stage reuses the existing entry and exposes a configurable endpoint; it does not implement distributed ingress failover or unattended privileged Android control.
+
 - 2026-10-13 confirmed: use only the existing free ingress plan and optimize away redundant peer traffic. Windows native Git checkout is `<Windows development checkout>`, development branch `feat/windows-standalone-node-v0.2`, accessed through authenticated outbound SSE. Use that directory for Windows work; preserve standalone runtime/credentials separately and do not resume Tailscale routing.
 
 - 2026-10-13 confirmed transport constraint: CodasSol must not use Tailscale. Outbound authenticated SSE job delivery through the public ingress is the intended cross-device path; ingress takeover is separate. Historical optional-Tailscale suggestions below are superseded. Keep the user's unrelated Tailscale setup intact. Mac product peer removed; Windows reciprocal cleanup and SSE deployment remain pending.
