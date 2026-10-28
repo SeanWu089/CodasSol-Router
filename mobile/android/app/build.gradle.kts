@@ -12,8 +12,8 @@ android {
         minSdk = 30
         targetSdk = 35
         testInstrumentationRunner = "com.codassol.mobile.PhoneInstrumentation"
-        versionCode = 6
-        versionName = "0.1.0-wireless-preview.5"
+        versionCode = 7
+        versionName = "0.1.0-wireless-preview.6"
     }
 
     buildTypes {

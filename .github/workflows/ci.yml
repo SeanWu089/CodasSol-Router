@@ -27,3 +27,14 @@ jobs:
 
       - name: Test production helpers without accessing production
         run: python3 -B -m unittest discover -s scripts/mac/production -p 'test_*.py' -v
+
+      - name: Set up Java for Android protocol checks
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Test Android protocol and stream callback boundaries
+        run: |
+          sh mobile/android/test/protocol-test.sh
+          sh mobile/android/test/stream-session-test.sh

@@ -25,8 +25,7 @@ class AgentService : Service() {
     private val connections = ConcurrentHashMap.newKeySet<HttpURLConnection>()
     private lateinit var store: PhoneStore
     private var session = -1L
-    @Volatile private var lastPositive = 0L
-    @Volatile private var streamId: String? = null
+    private val streams = StreamSession<HttpURLConnection>()
     private var serverSessionStart = 0L
     private var serverOffset = 0L
     private var wakeLock: PowerManager.WakeLock? = null
@@ -85,17 +84,26 @@ class AgentService : Service() {
                 pairing = ""
                 val credential = token!!
                 workers.scheduleWithFixedDelay({
-                    val activeStream = streamId
+                    val activeStream = streams.due(SystemClock.elapsedRealtime(), 20_000)
                     try {
                         keepAwake()
-                        if (AgentState.connected && activeStream != null && SystemClock.elapsedRealtime() - lastPositive >= 20_000) {
-                            json("/heartbeat", credential, store.metadata().put("streamId", activeStream))
+                        if (AgentState.connected && activeStream != null) {
+                            json("/heartbeat", credential, store.metadata().put("streamId", activeStream.id))
                             trace("heartbeat_ok")
-                            if (streamId == activeStream) lastPositive = SystemClock.elapsedRealtime()
+                            streams.acknowledge(activeStream, SystemClock.elapsedRealtime())
                         }
                     } catch (e: Exception) {
-                        if (AgentState.enabled && AgentState.generation == session) state("连接确认失败，正在恢复：${safeError(e)}")
-                        if (activeStream != null && streamId == activeStream) releaseConnections()
+                        if (activeStream != null) {
+                            val failedConnection = streams.failed(activeStream) {
+                                if (AgentState.enabled && AgentState.generation == session) state("连接确认失败，正在恢复：${safeError(e)}")
+                            }
+                            // Capture the failed stream itself; never close a snapshot that
+                            // may already contain its successor or unrelated result POSTs.
+                            if (failedConnection != null) {
+                                connections.remove(failedConnection)
+                                Thread({ failedConnection.disconnect() }, "codas-stream-disconnect").apply { isDaemon = true; start() }
+                            }
+                        }
                     }
                 }, 5, 5, TimeUnit.SECONDS)
                 var previousStream: String? = null
@@ -121,13 +129,15 @@ class AgentService : Service() {
                                         val ready = JSONObject(data)
                                         require(ready.getString("deviceId") == store.deviceId && ready.getInt("protocol") == 1) { "PROTOCOL_MISMATCH" }
                                         require(ready.optLong("leaseMs") == 90_000L) { "ROUTER_LEASE_UPGRADE_REQUIRED" }
-                                        streamId = ready.getString("streamId")
+                                        val streamId = ready.getString("streamId")
                                         previousStream = streamId
                                         val serverTime = ready.getLong("serverTime")
                                         serverOffset = System.currentTimeMillis() - serverTime
                                         if (serverSessionStart == 0L) serverSessionStart = serverTime
-                                        readyAt = System.currentTimeMillis(); lastPositive = SystemClock.elapsedRealtime()
-                                        check(AgentState.connect(session)) { "ACCESS_DISABLED" }; state("已连接 · 后台访问开启")
+                                        readyAt = System.currentTimeMillis()
+                                        streams.ready(streamId, connection, SystemClock.elapsedRealtime()) {
+                                            check(AgentState.connect(session)) { "ACCESS_DISABLED" }; state("已连接 · 后台访问开启")
+                                        }
                                     }
                                     "job" -> {
                                         trace("job_received")
@@ -152,7 +162,7 @@ class AgentService : Service() {
                                 }
                             }
                             throw IllegalStateException("STREAM_CLOSED")
-                        } finally { streamId = null; connections.remove(connection); connection.disconnect() }
+                        } finally { streams.clear(connection); connections.remove(connection); connection.disconnect() }
                     } catch (e: Exception) {
                         if (!AgentState.disconnect(session)) break
                         if (e is Rejected && e.status in listOf(401,403,404)) throw e

@@ -186,3 +186,10 @@ real deployment identities and addresses in accordance with `SECURITY.md`.
 - AND-06 preview.5: awaiting retest after exact previous-stream replacement. Preserve preview.3/.4 failures above. Need sustained unplugged locked info, unlock visual controls, and AND-02 switch-off rejection before merging PR #2. Public-network intermittent TCP timeouts remain under investigation.
 
 - Preview.5 automated AND-07 recovery passed; final user acceptance pending. Next: unplugged lock test, unlocked Test Pad controls, then explicit off/reopen rejection check (AND-01/02/04/06). User asked to unplug and lock; do not mark passed until confirmed.
+
+- Preview.5 AND-01/06 automated unplugged continuation: 6/6 real public requests passed over 170 s, including five locked samples. User confirmed physical unplug/lock; corrected previous “connecting” remark as old feedback. Awaiting unlocked Test Pad and switch-off/reopen acceptance; do not classify that remark as a preview.5 failure.
+
+- AND-04 preview.5: user explicitly confirmed Test Pad Taps 3 / Swipes 3 after wireless launch/screenshot/tap/swipe. Preview.6 callback isolation is built, awaiting installation and transport retest; no server redeployment required.
+- AND-08: phone reports idle/install permission true. Preview.6 same-signer/higher-version APK ready. Temporary external download hosting was blocked by automatic approval review; explicit user approval requested before publishing.
+
+- AND-08: user explicitly approved temporary HTTPS publication of the single Preview.6 APK. Hosting established; phone accepted exactly one update_agent task and reported downloading. Await hash/package/signer/version verification, user system-install confirmation and post-update version check. Close temporary hosting after delivery.
