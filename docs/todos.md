@@ -184,3 +184,5 @@ real deployment identities and addresses in accordance with `SECURITY.md`.
 - AND-06 preview.4: **failed**, repeated request timeout during extended lock/unplug test; user confirmed unplugged. Retrieve phone connection diagnostics without resetting switch/application, then repair and retest.
 
 - AND-06 preview.5: awaiting retest after exact previous-stream replacement. Preserve preview.3/.4 failures above. Need sustained unplugged locked info, unlock visual controls, and AND-02 switch-off rejection before merging PR #2. Public-network intermittent TCP timeouts remain under investigation.
+
+- Preview.5 automated AND-07 recovery passed; final user acceptance pending. Next: unplugged lock test, unlocked Test Pad controls, then explicit off/reopen rejection check (AND-01/02/04/06). User asked to unplug and lock; do not mark passed until confirmed.
