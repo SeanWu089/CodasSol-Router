@@ -79,7 +79,7 @@ async function validateOuterAuthorization(config, request) {
   const body = Buffer.from(JSON.stringify({
     jsonrpc: "2.0",
     id: "codassol-auth-probe",
-    method: "codassol/auth-probe"
+    method: "ping"
   }));
   const probeRequest = {
     method: "POST",
@@ -88,13 +88,19 @@ async function validateOuterAuthorization(config, request) {
       authorization: request.headers.authorization,
       accept: "application/json, text/event-stream",
       "content-type": "application/json",
-      ...(request.headers["mcp-protocol-version"]
-        ? { "mcp-protocol-version": request.headers["mcp-protocol-version"] }
-        : {})
+      // Authentication is independent of the caller's protocol negotiation.
+      "mcp-protocol-version": "2025-03-26"
     }
   };
   const response = await bufferedRequest(config, probeRequest, body);
-  return response.statusCode !== 401 && response.statusCode !== 403;
+  if (response.statusCode === 401 || response.statusCode === 403) return false;
+  if (response.statusCode !== 200) {
+    // Fail closed without misreporting an outage/rate limit as expired login.
+    throw Object.assign(new Error("Authorization verification unavailable"), {
+      code: "AUTH_CHECK_UNAVAILABLE"
+    });
+  }
+  return true;
 }
 
 function writeBufferedResponse(res, response) {

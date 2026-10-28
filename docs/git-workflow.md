@@ -1,6 +1,6 @@
 # Git workflow and Worktree responsibilities
 
-Status reviewed on 2026-10-10; verify with `git branch -avv` and `git worktree list` before changing anything.
+Status reviewed on 2026-10-28; verify with `git branch -avv` and `git worktree list` before changing anything.
 
 ## Long-lived branches
 
@@ -41,7 +41,26 @@ This checkout already has a `git lg` local alias using `--branches --remotes --t
 
 ## Deployments and user approval
 
-The active macOS Router executes from `~/.local/share/codassol-router`; DevSpace uses its installed runtime and the menu app uses `~/Applications/CodasSol-mac.app`. **Updating a Git worktree does not deploy the runtime.** Staging, compiling and testing may proceed normally; warn and obtain approval before any action that could restart or disconnect Router/DevSpace/MCP. Never publish internal addresses, credentials or device metadata to a public repository.
+The active macOS Router executes from `~/Library/Application Support/CodasSol/production/current`, which points to an immutable release outside the development checkout. The earlier `~/.local/share/codassol-router` is a backup only. DevSpace uses its installed runtime and the menu app uses `~/Applications/CodasSol-mac.app`. **Updating a Git worktree does not deploy the runtime.** Staging, compiling and testing may proceed normally; deployment requires task authorization for any action that could restart or disconnect Router/DevSpace/MCP. Never publish internal addresses, credentials or device metadata to a public repository.
+
+## Public source synchronization (2026-10-28)
+
+- Feature PRs target `develop`; CI now covers pull requests and pushes to both
+  `develop` and `main`, including isolated Python production-helper tests.
+- Local unpublished histories can contain private deployment observations.
+  Review the full newly reachable history before pushing a branch or tag.
+  Where needed, preserve the original branch and dirty worktree locally, then
+  export a sanitized source snapshot onto a review branch based on public
+  history. Do not push internal review/recovery refs or rewrite shared history.
+- `fix/mac-cloudflare-source-sync` carries the public-safe Cloudflare/auth and
+  production-helper source. The original private development history is kept
+  locally; its different commit IDs are intentional, not missing work.
+- Device identities, actual project inventories and fixed private endpoints
+  remain in local context. Public examples use neutral paths and hostnames.
+- The retained-worktree table above records the October 10 checkpoint, not a
+  current inventory; inspect Git and approved local context before cleanup.
+- Source synchronization does not close physical acceptance items or reconcile
+  production-only routing/SSE/traffic modules. Do that before a runtime release.
 
 ## Next safe housekeeping steps
 
