@@ -30,3 +30,7 @@ jobs:
               }
               Write-Host "PASS $($_.Name)"
             }
+
+      - name: Isolated recovery failure injection (no live task or process mutation)
+        shell: powershell
+        run: ./test/windows/recovery-faults.ps1

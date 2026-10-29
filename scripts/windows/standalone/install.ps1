@@ -189,21 +189,20 @@ Start-Sleep -Seconds 3
 Start-ScheduledTask -TaskName $taskRouter
 
 Step 'Verify actual backend health and authenticated Router identity'
+. (Join-Path $bundle 'health-diagnostics.ps1')
 $verified = $false
 for ($i = 0; $i -lt 40; $i++) {
-    try {
-        $dv = Invoke-RestMethod 'http://127.0.0.1:7676/healthz' -TimeoutSec 2
-        $rv = Invoke-RestMethod 'http://127.0.0.1:17678/_codassol/health' -TimeoutSec 2
-        if ($dv.ok -eq $true -and $dv.name -eq 'devspace' -and
-            $rv.ok -eq $true -and $rv.backendReachable -eq $true) {
-            $verified = $true
-            break
-        }
-    } catch { }
+    $dv = Get-SafeHealth 'devspace' 'http://127.0.0.1:7676/healthz'
+    $rv = Get-SafeHealth 'router' 'http://127.0.0.1:17678/_codassol/health'
+    $diagnostic = @{at=[DateTime]::UtcNow.ToString('o'); attempt=($i+1); devspace=$dv; router=$rv}
+    New-Item -ItemType Directory -Force (Join-Path $root 'logs') | Out-Null
+    $diagnostic | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $root 'logs\health-diagnostic.json') -Encoding UTF8
+    if ($dv.ok -and $dv.serviceMatches -and $rv.ok -and $rv.backendReachable) {$verified=$true; break}
     Start-Sleep -Seconds 2
 }
 if (-not $verified) {
-    throw 'Local Windows node not backend-ready. Old CodasSol files/tasks were NOT deleted; inspect NodeV02Standalone/logs and VERIFY.cmd.'
+    $diagnostic | ConvertTo-Json -Depth 5 | Write-Host
+    throw 'LOCAL_BACKEND_NOT_READY. See sanitized logs/health-diagnostic.json; transaction recovery will be attempted.'
 }
 & (Join-Path $bundle 'verify.ps1')
 if ($LASTEXITCODE -ne 0) { throw 'Authenticated Windows Router identity verification failed.' }

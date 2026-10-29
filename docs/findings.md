@@ -12,3 +12,11 @@
 - WIN-03 pending: reboot, disconnect/reconnect, sleep/wake and real remote execution.
 - WIN-04 pending: reversible owned-task disable/uninstall and restore.
 - Requires network access to install DevSpace 1.1.0-beta.4. No unattended deployment; no stable claim.
+
+
+## rc.1 recovery repair — local draft
+- Installation health now records only whitelisted status fields and exception type, probing Router and DevSpace independently. Initial backend failure cause remains unknown pending device evidence.
+- Recovery validates exact task action, user SID, private Node executable and permitted service command before stopping; disables owned tasks to prevent restart, waits for remaining owned processes, and aborts on ambiguous ownership.
+- Verified snapshots, flushed phase journal and same-parent Directory.Move replace recursive Move-Item. Failed renames preserve candidate/backup/staging; unfinished transactions block blind reinstallation. Identity, OAuth and generation ledgers are never restored backward.
+- Added DIAGNOSE.cmd for read-only metadata/error-marker collection, omitting command lines, raw logs and credentials.
+- Local Node tests: 118 passed. Windows fault-injection tests authored for CI, NOT executed yet (no local PowerShell). No rc.2 publication or physical repair performed.

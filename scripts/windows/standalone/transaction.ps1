@@ -1,64 +1,72 @@
 param([string]$Roots = '', [string]$RouterUrl = '', [switch]$LocalOnly,
       [switch]$SkipSentinelPrompt, [switch]$InstallFileSentinel)
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'recovery-support.ps1')
 $base = Join-Path $env:LOCALAPPDATA 'CodasSol'
 $root = Join-Path $base 'NodeV02Standalone'
 $state = Join-Path $env:USERPROFILE '.codassol-node-v02'
 $config = Join-Path $env:USERPROFILE '.devspace\config.jsonc'
 $tasks = @('CodasSol Standalone V02 DevSpace','CodasSol Standalone V02 Router','CodasSol Standalone V02 Outbound')
-$lock = Join-Path $base 'standalone-install.lock'
+$owner = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+if ($InstallFileSentinel) {throw 'Install optional Sentinel separately after candidate acceptance.'}
 New-Item -ItemType Directory -Force $base | Out-Null
-# Exclusive open remains held across child execution, and releases on process death.
-$handle = [IO.File]::Open($lock, 'OpenOrCreate', 'ReadWrite', 'None')
-$backup = Join-Path $base ('Backups\candidate-' + [guid]::NewGuid().ToString('N'))
+Assert-NoReparseTree $root
+$handle = [IO.File]::Open((Join-Path $base 'standalone-install.lock'),'OpenOrCreate','ReadWrite','None')
+$backup = $null
 try {
+    # Unfinished or legacy PREPARED attempts require inspection, never another blind reinstall.
+    foreach ($previous in (Get-ChildItem (Join-Path $base 'Backups') -Directory -Filter 'candidate-*' -ErrorAction SilentlyContinue)) {
+        $status = Join-Path $previous.FullName 'status'
+        if (-not (Test-Path $status) -or (Get-Content $status -Raw).Trim() -notin @('VERIFIED_LOCAL','ROLLED_BACK')) {throw 'INCOMPLETE_PRIOR_TRANSACTION_REQUIRES_REVIEW'}
+    }
+    $backup = Join-Path $base ('Backups\candidate-' + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $backup | Out-Null
     $records = @()
     foreach ($name in $tasks) {
-        $task = Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue
-        if ($task) {
-            $account = New-Object Security.Principal.NTAccount($task.Principal.UserId)
-            if ($account.Translate([Security.Principal.SecurityIdentifier]).Value -ne [Security.Principal.WindowsIdentity]::GetCurrent().User.Value -or
-                $task.Actions.Count -ne 1 -or $task.Actions[0].Arguments -notlike ('*' + $root + '\runtime\*')) {
-                throw "Foreign task: $name. Installation stopped before mutation."
-            }
-            $records += @{name=$name; running=($task.State -eq 'Running'); xml=(Export-ScheduledTask -TaskName $name)}
-        }
+        $task = Get-ScheduledTask -TaskName $name -TaskPath '\' -ErrorAction SilentlyContinue
+        if ($task) {Assert-RuntimeTask $task $root $owner; $records += @{name=$name; running=($task.State -eq 'Running'); xml=(Export-ScheduledTask -TaskName $name -TaskPath '\')}}
     }
-    # Private backup remains on this Windows user's disk; never upload it.
-    $records | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $backup 'tasks.json') -Encoding UTF8
-    foreach ($entry in @(@($root,'runtime'),@($state,'state'),@($config,'config.jsonc'))) {
-        if (Test-Path -LiteralPath $entry[0]) { Copy-Item -LiteralPath $entry[0] -Destination (Join-Path $backup $entry[1]) -Recurse }
+    ConvertTo-Json -InputObject $records -Depth 8 | Set-Content (Join-Path $backup 'tasks.json') -Encoding UTF8
+    Write-RecoveryJournal $backup 'QUIESCING'
+    Stop-OwnedRuntime $root $tasks $owner
+    Write-RecoveryJournal $backup 'QUIESCED'
+    foreach ($entry in @(@($root,'runtime'),@($state,'state'))) {
+        if (Test-Path -LiteralPath $entry[0]) {Copy-VerifiedTree $entry[0] (Join-Path $backup $entry[1])}
     }
-    [IO.File]::WriteAllText((Join-Path $backup 'status'), 'PREPARED')
+    if (Test-Path -LiteralPath $config) {Copy-Item -LiteralPath $config -Destination (Join-Path $backup 'config.jsonc')}
+    Write-RecoveryJournal $backup 'PREPARED'
     try {
-        $args = @('-NoLogo','-NoProfile','-File',(Join-Path $PSScriptRoot 'install.ps1'),'-TransactionManaged')
-        if ($Roots) {$args += @('-Roots',$Roots)}
-        if ($RouterUrl) {$args += @('-RouterUrl',$RouterUrl)}
-        if ($LocalOnly) {$args += '-LocalOnly'}
-        if ($SkipSentinelPrompt) {$args += '-SkipSentinelPrompt'}
-        if ($InstallFileSentinel) {throw 'Install optional Sentinel separately after candidate acceptance.'}
-        & powershell.exe @args
-        if ($LASTEXITCODE -ne 0) {throw "Installer exited $LASTEXITCODE"}
-        [IO.File]::WriteAllText((Join-Path $backup 'status'), 'VERIFIED_LOCAL')
-        Write-Host "Rollback snapshot retained privately: $backup"
+        Write-RecoveryJournal $backup 'INSTALLING'
+        $arguments = @('-NoLogo','-NoProfile','-File',(Join-Path $PSScriptRoot 'install.ps1'),'-TransactionManaged')
+        if ($Roots) {$arguments += @('-Roots',$Roots)}
+        if ($RouterUrl) {$arguments += @('-RouterUrl',$RouterUrl)}
+        if ($LocalOnly) {$arguments += '-LocalOnly'}
+        $arguments += '-SkipSentinelPrompt'
+        & powershell.exe @arguments
+        if ($LASTEXITCODE -ne 0) {throw 'INSTALLER_FAILED'}
+        Write-RecoveryJournal $backup 'VERIFIED_LOCAL'
+        Write-Host "Private recovery snapshot: $backup"
     } catch {
-        $failure = $_
-        foreach ($name in $tasks) {
-            Stop-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue
-            Unregister-ScheduledTask -TaskName $name -Confirm:$false -ErrorAction SilentlyContinue
+        Write-RecoveryJournal $backup 'ROLLBACK_QUIESCING'
+        try {
+            Stop-OwnedRuntime $root $tasks $owner
+            Switch-RuntimeForRollback $root $backup
+            # Never rewind identity, tokens, OAuth or monotonic generation ledgers.
+            $oldRoots = Join-Path $backup 'state\roots.txt'
+            if (Test-Path $oldRoots) {Copy-Item -LiteralPath $oldRoots -Destination (Join-Path $state 'roots.txt') -Force}
+            if (Test-Path (Join-Path $backup 'config.jsonc')) {Copy-Item -LiteralPath (Join-Path $backup 'config.jsonc') -Destination $config -Force}
+            Write-RecoveryJournal $backup 'RESTORING_TASKS'
+            foreach ($name in $tasks) {
+                $task = Get-ScheduledTask -TaskName $name -TaskPath '\' -ErrorAction SilentlyContinue
+                if ($task) {Assert-RuntimeTask $task $root $owner; Unregister-ScheduledTask -TaskName $name -TaskPath '\' -Confirm:$false}
+            }
+            foreach ($record in $records) {Register-ScheduledTask -TaskName $record.name -TaskPath '\' -Xml $record.xml -Force | Out-Null}
+            foreach ($record in $records) {if ($record.running) {Start-ScheduledTask -TaskName $record.name -TaskPath '\'}}
+            Write-RecoveryJournal $backup 'ROLLED_BACK'
+        } catch {
+            Write-RecoveryJournal $backup 'ROLLBACK_BLOCKED' @{errorType=$_.Exception.GetType().Name}
+            throw "ROLLBACK_BLOCKED. Preserve runtime and sibling .restore-/.failed- directories. Private journal: $backup"
         }
-        if (Test-Path -LiteralPath $root) {Move-Item -LiteralPath $root -Destination (Join-Path $backup 'failed-runtime')}
-        if (Test-Path (Join-Path $backup 'runtime')) {Copy-Item -LiteralPath (Join-Path $backup 'runtime') -Destination $root -Recurse}
-        # Never rewind identity, OAuth state or session-generation reservations.
-        $oldRoots = Join-Path $backup 'state\roots.txt'
-        if (Test-Path $oldRoots) {Copy-Item -LiteralPath $oldRoots -Destination (Join-Path $state 'roots.txt') -Force}
-        if (Test-Path (Join-Path $backup 'config.jsonc')) {Copy-Item -LiteralPath (Join-Path $backup 'config.jsonc') -Destination $config -Force}
-        foreach ($record in $records) {
-            Register-ScheduledTask -TaskName $record.name -Xml $record.xml -Force | Out-Null
-            if ($record.running) {Start-ScheduledTask -TaskName $record.name}
-        }
-        [IO.File]::WriteAllText((Join-Path $backup 'status'), 'ROLLED_BACK')
-        throw $failure
+        throw "INSTALLER_FAILED_ROLLBACK_COMPLETE. Inspect health-diagnostic.json in the preserved runtime logs. Snapshot: $backup"
     }
 } finally {$handle.Dispose()}
