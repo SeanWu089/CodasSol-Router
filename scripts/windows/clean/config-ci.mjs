@@ -1,0 +1,25 @@
+// CI-only. Synthetic credentials, temporary config; no scheduled tasks or real user state.
+import fs from 'node:fs';
+import path from 'node:path';
+import assert from 'node:assert/strict';
+import {spawnSync} from 'node:child_process';
+import {pathToFileURL} from 'node:url';
+const root=path.resolve(process.argv[2]);
+fs.mkdirSync(path.join(root,'runtime'),{recursive:true});
+fs.mkdirSync(path.join(root,'state'),{recursive:true});
+fs.copyFileSync(new URL('./runtime/isolate-config.mjs',import.meta.url),path.join(root,'runtime','isolate-config.mjs'));
+fs.writeFileSync(path.join(root,'state','roots.txt'),root);
+const env={...process.env,DEVSPACE_CONFIG_DIR:path.join(root,'devspace-config')};
+delete env.DEVSPACE_OAUTH_OWNER_TOKEN;
+const run=spawnSync(process.execPath,[path.join(root,'runtime','isolate-config.mjs')],{env,encoding:'utf8'});
+assert.equal(run.status,0,run.stderr);
+const config=await import(pathToFileURL(path.join(root,'devspace/node_modules/@waishnav/devspace/dist/user-config.js')));
+const files=config.loadDevspaceFiles(env);
+assert.equal(files.authExists,false,'No old authentication may be reused');
+assert.equal(files.config.storage.stateDir,path.join(root,'devspace-state'));
+assert.equal(files.config.skills.agentDir,path.join(root,'agents'));
+assert.equal(files.config.workspaces.worktreeRoot,path.join(root,'worktrees'));
+assert.deepEqual(files.config.workspaces.allowedRoots,[root]);
+const missing=spawnSync(process.execPath,[path.join(root,'runtime','isolate-config.mjs')],{env:{...env,DEVSPACE_CONFIG_DIR:path.join(root,'wrong')},encoding:'utf8'});
+assert.notEqual(missing.status,0);
+console.log('PASS pinned DevSpace config schema, private auth/storage/agent/worktree isolation, explicit roots, incorrect environment rejected');

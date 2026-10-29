@@ -21,7 +21,7 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          Get-ChildItem 'scripts/windows/standalone' -Filter *.ps1 -Recurse |
+          Get-ChildItem 'scripts/windows' -Filter *.ps1 -Recurse |
             ForEach-Object {
               $tokens = $null
               $errors = $null
@@ -38,3 +38,16 @@ jobs:
       - name: Original rc.1 saved-task format and malicious-record regression
         shell: powershell
         run: ./test/windows/saved-task-format.ps1
+
+      - name: Clean installation isolation and failure tests
+        shell: powershell
+        run: ./test/windows/clean-faults.ps1
+      - name: Pinned DevSpace private config compatibility
+        shell: powershell
+        timeout-minutes: 12
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP 'codas-clean-fixture'
+          npm install --prefix (Join-Path $root 'devspace') --no-audit --no-fund --fetch-retries=1 '@waishnav/devspace@1.1.0-beta.4'
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned dependency install failed' }
+          node scripts/windows/clean/config-ci.mjs $root
+          if ($LASTEXITCODE -ne 0) { throw 'Private config compatibility failed' }

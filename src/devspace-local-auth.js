@@ -34,7 +34,7 @@ export class DevSpaceLocalOAuth {
     baseUrl = "http://127.0.0.1:7676",
     oauthState = {},
     saveOAuthState = async () => {},
-    ownerTokenPath = path.join(os.homedir(), ".devspace", "auth.json"),
+    ownerTokenPath = process.env.CODASSOL_DEVSPACE_AUTH_FILE || path.join(os.homedir(), ".devspace", "auth.json"),
     fetchFn = fetch
   } = {}) {
     this.baseUrl = new URL(baseUrl);

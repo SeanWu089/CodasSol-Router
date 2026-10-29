@@ -20,3 +20,8 @@
 - Verified snapshots, flushed phase journal and same-parent Directory.Move replace recursive Move-Item. Failed renames preserve candidate/backup/staging; unfinished transactions block blind reinstallation. Identity, OAuth and generation ledgers are never restored backward.
 - Added DIAGNOSE.cmd for read-only metadata/error-marker collection, omitting command lines, raw logs and credentials.
 - Local Node tests: 118 passed. Windows fault-injection tests authored for CI, NOT executed yet (no local PowerShell). No rc.2 publication or physical repair performed.
+
+## Isolated clean reinstall candidate
+- Fresh NodeCleanR1 uses private DevSpace config/auth/storage and node state. Legacy owned tasks are verified and disabled; inaccessible runtime remains preserved. Shared configuration and user projects are not deleted or reused.
+- Explicit CLEAN, INIT and optional PAIR gates; bounded worker operations, visible progress, sanitized health checks, exact authenticated identity verification.
+- Windows automated isolation/fault tests added; physical clean install, backend startup, pairing, reboot and sleep acceptance remain pending. No claim that the original backend failure is diagnosed.
