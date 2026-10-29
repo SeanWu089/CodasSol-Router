@@ -26,6 +26,20 @@ try {
  $p.TestSid='foreign';MustFail {Assert-RuntimeProcess $p $root 'owner'}
  $p.TestSid='owner';Assert-RuntimeProcess $p $root 'owner'
  $p.CommandLine='"C:\Test\Runtime\node\node.exe" arbitrary-user-job.js';MustFail {Assert-RuntimeProcess $p $root 'owner'}
+ # Quiescence must reject ambiguous processes before issuing any mutation.
+ $script:stops=0
+ function Get-ScheduledTask {param($TaskName,$TaskPath,$ErrorAction) $null}
+ function Get-RuntimeProcesses {param($Root) @($p)}
+ function Stop-Process {param($Id,$ErrorAction) $script:stops++}
+ MustFail {Stop-OwnedRuntime $root @('CodasSol Standalone V02 Router') 'owner'}
+ Assert ($script:stops -eq 0) 'Unknown process was stopped'
+ # Real Windows open-file lock: rename failure must leave root and snapshot intact.
+ $lockedBase=Join-Path $temp 'real-lock'; $lockedRoot=Join-Path $lockedBase 'runtime';$lockedBackup=Join-Path $lockedBase 'backup'
+ New-Item -ItemType Directory -Force $lockedRoot,(Join-Path $lockedBackup 'runtime') | Out-Null
+ Set-Content "$lockedRoot\held.txt" 'candidate';Set-Content "$lockedBackup\runtime\held.txt" 'old'
+ $held=[IO.File]::Open("$lockedRoot\held.txt",'Open','Read','None')
+ try {MustFail {Switch-RuntimeForRollback $lockedRoot $lockedBackup};Assert (Test-Path "$lockedRoot\held.txt") 'Locked original was lost'} finally {$held.Dispose()}
+ Assert ((Get-Content "$lockedBackup\runtime\held.txt") -eq 'old') 'Locked rollback modified backup'
  # Sensitive exception text must not appear in the diagnostic object.
  function Invoke-RestMethod {throw 'SECRET_SENTINEL_DO_NOT_EXPORT'}
  $h=Get-SafeHealth 'devspace' 'http://example.invalid';Assert (-not $h.reachable) 'Failure hidden'

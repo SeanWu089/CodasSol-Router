@@ -78,12 +78,12 @@ function Copy-VerifiedTree($Source, $Destination) {
         if ((Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash -ne (Get-FileHash -LiteralPath (Join-Path $Destination $relative) -Algorithm SHA256).Hash) {throw 'SNAPSHOT_HASH_MISMATCH'}
     }
 }
-function Switch-RuntimeForRollback($Root, $Backup, $Rename = {param($a,$b) [IO.Directory]::Move($a,$b)}) {
+function Switch-RuntimeForRollback($Root, $Backup, $Rename = {param($a,$b) [IO.Directory]::Move($a,$b)}, $Snapshot = $null) {
     # Same-parent Directory.Move is a rename, never Move-Item's partial file walk.
     $suffix = [guid]::NewGuid().ToString('N')
     $stage = $Root + '.restore-' + $suffix
     $failed = $Root + '.failed-' + $suffix
-    $old = Join-Path $Backup 'runtime'
+    $old = if ($Snapshot) {$Snapshot} else {Join-Path $Backup 'runtime'}
     if (Test-Path -LiteralPath $old) {Copy-VerifiedTree $old $stage}
     Assert-NoReparseTree $Root
     Write-RecoveryJournal $Backup 'ROLLBACK_STAGED' @{stage=$stage; failed=$failed}

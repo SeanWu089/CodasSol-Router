@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - release/windows-rc1-public
+      - fix/windows-rc1-recovery
   workflow_dispatch:
 
 jobs:
