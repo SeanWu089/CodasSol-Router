@@ -14,7 +14,7 @@ try {
  Set-Location -LiteralPath $env:TEMP
  [Environment]::CurrentDirectory=$env:TEMP
  if(($env:PROCESSOR_ARCHITECTURE -ne 'AMD64') -and ($env:PROCESSOR_ARCHITEW6432 -ne 'AMD64')){throw 'WINDOWS_X64_REQUIRED'}
- if(Test-Path -LiteralPath $root){throw 'NEW_INSTALL_DIRECTORY_EXISTS: preserved; do not rerun over an incomplete installation.'}
+ if(Test-Path -LiteralPath $root){& (Join-Path $bundle 'resume-workspace.ps1');exit $LASTEXITCODE}
  if($bundle.StartsWith($plan.oldRoot+'\',[StringComparison]::OrdinalIgnoreCase) -or $bundle -eq $plan.oldRoot){throw 'EXTRACT_PACKAGE_OUTSIDE_OLD_RUNTIME'}
  Assert-NoReparseTree $bundle
  if((Test-Path -LiteralPath $base) -and ((Get-Item -LiteralPath $base).Attributes -band [IO.FileAttributes]::ReparsePoint)){throw 'REPARSE_BASE_REQUIRES_REVIEW'}
@@ -56,8 +56,9 @@ try {
  & $node $cli --version
  if($LASTEXITCODE -ne 0){throw 'DEVSPACE_CLI_FAILED'}
  Step 'SELECTING_NEW_WORKSPACE_PERMISSION'
- $roots=Read-Host 'Existing absolute project folder to authorize (one folder; no default)'
- if(-not [IO.Path]::IsPathRooted($roots) -or -not(Test-Path -LiteralPath $roots -PathType Container) -or $roots.Contains('|')){throw 'EXPLICIT_EXISTING_FOLDER_REQUIRED'}
+ . (Join-Path $bundle 'workspace-input.ps1')
+ $roots=Read-WorkspaceFolder
+ Write-Host "Selected workspace: $roots (and descendants)"
  [IO.File]::WriteAllText((Join-Path $root 'state\roots.txt'),$roots,(New-Object Text.UTF8Encoding($false)))
  [IO.File]::WriteAllText((Join-Path $root 'state\device-id.txt'),('device-'+[guid]::NewGuid().ToString('D')),(New-Object Text.UTF8Encoding($false)))
  # Configure private storage BEFORE init can create any database/worktree state.

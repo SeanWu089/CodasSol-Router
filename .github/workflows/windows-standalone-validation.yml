@@ -57,3 +57,6 @@ jobs:
       - name: Desktop resume scope guard
         shell: powershell
         run: ./test/windows/resume-desktop.ps1
+      - name: Workspace input retry behavior
+        shell: powershell
+        run: ./test/windows/workspace-input.ps1
