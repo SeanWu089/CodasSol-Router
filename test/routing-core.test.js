@@ -122,7 +122,7 @@ test("an unmatched Windows path never falls back to the only Mac", () => {
     roots: ["/Users/example"]
   });
   assert.throws(
-    () => policy.resolveOpenWorkspace({ path: "C:/Users/ASUS/Desktop" }),
+    () => policy.resolveOpenWorkspace({ path: "C:/Users/Example/Desktop" }),
     (error) => error.code === "NO_DEVICE_MATCH" && error.details.deviceIds.includes("local")
   );
 });
@@ -161,10 +161,10 @@ test("explicit device selection preserves paths and never silently switches devi
 test("only the historical D/E paths use the constrained rootless Windows recovery route", () => {
   const { devices, policy } = makePolicy();
   devices.register({ id: "local", platform: "darwin", presence: "static", roots: ["/Users/example"] });
-  devices.register({ id: "SEANSWPC", platform: "win32", presence: "static", roots: [] });
-  assert.equal(policy.resolveOpenWorkspace({ path: "D:\\Repos\\Foo" }).id, "SEANSWPC");
-  assert.equal(policy.resolveOpenWorkspace({ path: "E:/Projects/Foo" }).id, "SEANSWPC");
-  assert.throws(() => policy.resolveOpenWorkspace({ path: "C:/Users/ASUS/Desktop" }),
+  devices.register({ id: "legacy-windows-example", platform: "win32", presence: "static", roots: [] });
+  assert.throws(() => policy.resolveOpenWorkspace({ path: "D:\\Repos\\Foo" }), {code:"NO_DEVICE_MATCH"});
+  assert.throws(() => policy.resolveOpenWorkspace({ path: "E:/Projects/Foo" }), {code:"NO_DEVICE_MATCH"});
+  assert.throws(() => policy.resolveOpenWorkspace({ path: "C:/Users/Example/Desktop" }),
     (error) => error.code === "NO_DEVICE_MATCH");
   devices.register({ id: "otherWindows", platform: "win32", presence: "static", roots: ["C:/Users/Other"] });
   assert.throws(() => policy.resolveOpenWorkspace({ path: "D:/Repos/Foo" }),
@@ -176,7 +176,7 @@ test("legacy rootless Windows Agent can be explicitly selected without broadenin
   devices.register({ id: "old-win", platform: "win32", presence: "static", roots: [] });
   assert.equal(policy.resolveOpenWorkspace({ path: "~/Desktop", deviceId: "old-win" }).path, "~/Desktop");
   assert.equal(policy.resolveOpenWorkspace({ path: "D:\\Projects", deviceId: "old-win" }).id, "old-win");
-  assert.throws(() => policy.resolveOpenWorkspace({ path: "/Users/sean", deviceId: "old-win" }),
+  assert.throws(() => policy.resolveOpenWorkspace({ path: "/Users/example", deviceId: "old-win" }),
     (error) => error.code === "PATH_NOT_ON_DEVICE");
 });
 

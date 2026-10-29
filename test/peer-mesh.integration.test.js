@@ -7,6 +7,7 @@ import test from "node:test";
 import { createRouterRuntime } from "../src/runtime.js";
 import { startRouter } from "../src/server.js";
 import { PeerMesh } from "../src/peer-mesh.js";
+import { DeviceRegistry } from "../src/device-registry.js";
 
 function listen(server) {
   return new Promise((resolve, reject) => {
@@ -183,7 +184,7 @@ test("Peer configuration fails closed for insecure transport, colliding IDs and 
     }
   };
   const base = { id: "windows", platform: "win32", roots: ["C:\\Projects"],
-    token: "a".repeat(40), url: "http://192.168.1.50:17676" };
+    token: "a".repeat(40), url: "http://192.0.2.50:17676" };
   assert.throws(() => new PeerMesh({ runtime, peers: [base] }), /requires HTTPS/);
   assert.throws(() => new PeerMesh({ runtime, peers: [
     { ...base, url: "http://127.0.0.1:17676", token: "short" }
@@ -191,4 +192,38 @@ test("Peer configuration fails closed for insecure transport, colliding IDs and 
   assert.throws(() => new PeerMesh({ runtime, peers: [
     { ...base, id: "mac", url: "http://127.0.0.1:17676" }
   ] }), /different from the local/);
+});
+
+test("Peer health allows slow but authenticated tailnet HTTPS without falsely marking a node offline", async () => {
+  const devices = new DeviceRegistry();
+  const runtime = {
+    localDeviceId: "mac",
+    devices,
+    catalog: {
+      observe: async () => {},
+      get: () => null
+    }
+  };
+  const peer = {
+    id: "windows-router",
+    url: "https://windows-router.example.test",
+    token: "a".repeat(40),
+    platform: "win32",
+    roots: ["C:\\Users\\Tester"]
+  };
+  const fetchFn = async (_url, options) => new Promise((resolve, reject) => {
+    const timer = setTimeout(() => resolve(new Response(JSON.stringify({
+      protocol: 2, id: peer.id, label: "Windows", platform: "win32",
+      roots: peer.roots, backendReachable: true
+    }), { status: 200, headers: { "content-type": "application/json" } })), 2800);
+    options.signal?.addEventListener("abort", () => {
+      clearTimeout(timer);
+      reject(options.signal.reason);
+    }, { once: true });
+  });
+  const mesh = new PeerMesh({ runtime, peers: [peer], fetchFn });
+  await mesh.refresh();
+  assert.equal(mesh.peerHealth.get(peer.id).reachable, true);
+  assert.equal(mesh.peerHealth.get(peer.id).backendReachable, true);
+  assert.equal(devices.get(peer.id).online, true);
 });

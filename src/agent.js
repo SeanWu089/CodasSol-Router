@@ -3,6 +3,8 @@ import process from "node:process";
 import { pathToFileURL } from "node:url";
 import { AgentConfigStore } from "./agent-config.js";
 import { DevSpaceLocalOAuth } from "./devspace-local-auth.js";
+import { consumeAgentEvents, nextSseFailureCount, reconnectDelayMs, SseUnavailableError } from "./agent-sse.js";
+import { AGENT_SSE_HEARTBEAT_INTERVAL_MS } from "./agent-timing.js";
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -58,7 +60,7 @@ async function routerJson(url, { token, method = "POST", body, timeoutMs = 35_00
     const text = await response.text();
     const parsed = text ? JSON.parse(text) : {};
     if (!response.ok) {
-      throw new Error(parsed.message || parsed.error || `HTTP ${response.status}`);
+      throw Object.assign(new Error(parsed.message || parsed.error || `HTTP ${response.status}`), { status: response.status });
     }
     return parsed;
   } finally {
@@ -70,6 +72,7 @@ export async function enrollAgent({
   routerUrl,
   pairingToken,
   deviceId = os.hostname(),
+  installationId,
   label = os.hostname(),
   roots = [],
   devspaceBaseUrl = "http://127.0.0.1:7676",
@@ -80,6 +83,7 @@ export async function enrollAgent({
     token: pairingToken,
     body: {
       id: deviceId,
+      ...(installationId ? { installationId } : {}),
       label,
       platform: process.platform,
       roots,
@@ -153,25 +157,174 @@ async function executeHttpJob(configStore, config, payload) {
   };
 }
 
+export function isExpiredAgentJob(job, now = Date.now()) {
+  // Legacy v0.1/v0.2 Routers did not send a deadline. Retain compatibility
+  // during rolling upgrades; new Routers always attach expiresAt.
+  return job && Object.hasOwn(job, "expiresAt") &&
+    (!Number.isSafeInteger(job.expiresAt) || now >= job.expiresAt);
+}
+
 export async function runAgent({
   configStore = new AgentConfigStore(),
-  stopSignal = () => false
+  stopSignal = () => false,
+  replicaReceiver = null,
+  sleepFn = sleep,
+  transport = process.env.CODASSOL_AGENT_TRANSPORT === "poll" ? "poll" : "sse"
 } = {}) {
   const config = await configStore.load();
+  let streamId;
+  let generation = 0;
+  const completedJobs = new Set();
+  const heartbeat = (id = streamId) => routerJson(`${config.routerUrl}/_codassol/agent/heartbeat`, {
+    token: config.agentToken,
+    body: {
+      ...(id ? { streamId: id } : {}),
+      roots: config.device.roots,
+      capabilities: config.device.capabilities
+    },
+    timeoutMs: 10_000
+  });
+  const reportJob = async (job) => {
+    if (completedJobs.has(job.id) || isExpiredAgentJob(job)) {
+      // The Router has already rejected the caller's request, so there is
+      // nothing to acknowledge. Never run a late file mutation or command.
+      process.stderr.write("CodasSol Agent discarded expired job before execution\n");
+      return;
+    }
+    completedJobs.add(job.id);
+    if (completedJobs.size > 4096) completedJobs.delete(completedJobs.values().next().value);
+    let body;
+    try {
+      let result;
+      if (job.payload?.type === "auth-replica-checkpoint" ||
+          job.payload?.type === "auth-replica-commit") {
+        const commit = job.payload.type === "auth-replica-commit";
+        const handler = commit ? replicaReceiver?.commit : replicaReceiver?.receive;
+        if (typeof handler !== "function") {
+          throw Object.assign(new Error("Replica receiver not configured"), {
+            code: "AUTH_REPLICA_DISABLED"
+          });
+        }
+        // Replica jobs can never be forwarded to the local DevSpace. The
+        // receiver pins signer, recipient, installation and ordered state.
+        result = await handler.call(replicaReceiver,
+          commit ? job.payload.certificate : job.payload.checkpoint);
+      } else {
+        result = await executeHttpJob(configStore, config, job.payload);
+      }
+      body = { jobId: job.id, ok: true, result };
+    } catch (error) {
+      body = {
+        jobId: job.id,
+        ok: false,
+        error: {
+          code: error?.code || "AGENT_JOB_FAILED",
+          message: error instanceof Error ? error.message : String(error)
+        }
+      };
+    }
+    if (isExpiredAgentJob(job)) return;
+    await routerJson(`${config.routerUrl}/_codassol/agent/result`, {
+      token: config.agentToken, body, timeoutMs: 10_000
+    });
+    // An authenticated result POST already refreshes Router presence.
+    heartbeatAt = Date.now() + positiveHeartbeatIntervalMs;
+    sseFailures = 0;
+    connectionFailures = 0;
+  };
+  const logError = (error) => process.stderr.write(
+    `CodasSol Agent connection error: ${error instanceof Error ? error.message : String(error)}\n`
+  );
+  // 60-second HTTP heartbeats would cost 43,200 requests per 30-day month
+  // PER device. Keep one-way SSE framing cheap and positively confirm
+  // Agent liveness at a quota-friendly interval instead.
+  let positiveHeartbeatIntervalMs = AGENT_SSE_HEARTBEAT_INTERVAL_MS;
   let heartbeatAt = 0;
+  let sseFailures = 0;
+  let sseUnavailable = transport === "poll";
+  let connectionFailures = 0;
 
   while (!stopSignal()) {
     try {
-      if (Date.now() >= heartbeatAt) {
-        await routerJson(`${config.routerUrl}/_codassol/agent/heartbeat`, {
-          token: config.agentToken,
-          body: {
-            roots: config.device.roots,
-            capabilities: config.device.capabilities
-          },
-          timeoutMs: 10_000
-        });
-        heartbeatAt = Date.now() + 10_000;
+      if (sseUnavailable && Date.now() >= heartbeatAt) {
+        await heartbeat();
+        // Legacy explicit polling only; SSE registration needs no extra POST.
+        heartbeatAt = Date.now() + positiveHeartbeatIntervalMs;
+      }
+
+      if (!sseUnavailable) {
+        const controller = new AbortController();
+        const epoch = ++generation;
+        const stopTimer = setInterval(() => {
+          if (stopSignal()) controller.abort();
+        }, 1_000);
+        stopTimer.unref?.();
+        let heartbeatInFlight = false;
+        const heartbeatTimer = setInterval(async () => {
+          if (controller.signal.aborted || heartbeatInFlight || Date.now() < heartbeatAt) return;
+          heartbeatInFlight = true;
+          try {
+            await heartbeat(streamId);
+            if (epoch !== generation || controller.signal.aborted) return;
+            sseFailures = 0;
+            connectionFailures = 0;
+            heartbeatAt = Date.now() + positiveHeartbeatIntervalMs;
+          } catch (error) {
+            if (epoch !== generation || controller.signal.aborted) return;
+            if (streamId) { controller.abort(error); return; }
+            if ([401, 403, 409].includes(error.status)) {
+              controller.abort(error);
+              return;
+            }
+            heartbeatAt = Date.now() + 5 * 60_000;
+            logError(error);
+          } finally {
+            heartbeatInFlight = false;
+          }
+        }, 5_000);
+        heartbeatTimer.unref?.();
+        let readyAt = null;
+        try {
+          await consumeAgentEvents({
+            url: `${config.routerUrl}/_codassol/agent/events`,
+            token: config.agentToken,
+            signal: controller.signal,
+            previousStreamId: streamId,
+            onReady: (ready) => {
+              if (epoch !== generation || controller.signal.aborted) return;
+              streamId = ready.streamId;
+              positiveHeartbeatIntervalMs = streamId ? 20_000 : AGENT_SSE_HEARTBEAT_INTERVAL_MS;
+              readyAt = Date.now();
+              heartbeatAt = Date.now() + positiveHeartbeatIntervalMs;
+              connectionFailures = 0;
+            },
+            onJob: reportJob
+          });
+          if (stopSignal()) break;
+          throw new Error("SSE connection ended unexpectedly");
+        } catch (error) {
+          if (stopSignal()) break;
+          if ([401, 403].includes(controller.signal.reason?.status)) throw controller.signal.reason;
+          if (controller.signal.reason?.status === 409) error = new Error("Stream lease expired; reconnecting");
+          if (error instanceof SseUnavailableError) {
+            // An unsupported endpoint must not silently become paid polling.
+            throw error;
+          } else {
+            if ([401, 403, 409].includes(error.status)) throw error;
+            logError(error);
+            sseFailures = nextSseFailureCount(sseFailures, {
+              readyAt, disconnectedAt: Date.now()
+            });
+            // Repeated stream failures back off; never add a polling request.
+            controller.abort();
+            await sleepFn(reconnectDelayMs(sseFailures));
+          }
+          continue;
+        } finally {
+          controller.abort();
+          clearInterval(stopTimer);
+          clearInterval(heartbeatTimer);
+        }
       }
 
       const polled = await routerJson(`${config.routerUrl}/_codassol/agent/poll`, {
@@ -180,33 +333,11 @@ export async function runAgent({
         timeoutMs: 32_000
       });
       if (!polled.job) continue;
-
-      try {
-        const result = await executeHttpJob(configStore, config, polled.job.payload);
-        await routerJson(`${config.routerUrl}/_codassol/agent/result`, {
-          token: config.agentToken,
-          body: { jobId: polled.job.id, ok: true, result },
-          timeoutMs: 10_000
-        });
-      } catch (error) {
-        await routerJson(`${config.routerUrl}/_codassol/agent/result`, {
-          token: config.agentToken,
-          body: {
-            jobId: polled.job.id,
-            ok: false,
-            error: {
-              code: error?.code || "AGENT_JOB_FAILED",
-              message: error instanceof Error ? error.message : String(error)
-            }
-          },
-          timeoutMs: 10_000
-        });
-      }
+      await reportJob(polled.job);
     } catch (error) {
-      process.stderr.write(
-        `CodasSol Agent connection error: ${error instanceof Error ? error.message : String(error)}\n`
-      );
-      await sleep(2_000);
+      if (error instanceof SseUnavailableError || [401, 403, 409].includes(error.status)) throw error;
+      logError(error);
+      await sleepFn(reconnectDelayMs(++connectionFailures));
     }
   }
 }

@@ -69,7 +69,7 @@ test("MCP client discovers devices and routes a home path without leaking routin
   assert.equal(bindings.get("ws_mac").deviceId, "local");
   const callsBefore = seen.length;
   const invalid = await invoke({ jsonrpc: "2.0", id: 4, method: "tools/call", params: {
-    name: "open_workspace", arguments: { path: "C:\\Users\\ASUS\\Desktop" }
+    name: "open_workspace", arguments: { path: "C:\\Users\\Example\\Desktop" }
   } });
   assert.equal(invalid.status, 502);
   assert.equal(invalid.body.error, "NO_DEVICE_MATCH");

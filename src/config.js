@@ -27,6 +27,7 @@ export function loadConfig(env = process.env) {
     localDeviceLabel: env.CODASSOL_LOCAL_DEVICE_LABEL || "Local computer",
     localRoots: splitRoots(env.CODASSOL_LOCAL_ROOTS),
     peersFile: env.CODASSOL_PEERS_FILE || null,
+    outboundOnly: env.CODASSOL_OUTBOUND_ONLY === "1",
     allowInsecurePeers: env.CODASSOL_ALLOW_INSECURE_PEERS === "1",
     peerProbeIntervalMs: Number.parseInt(env.CODASSOL_PEER_PROBE_INTERVAL_MS || "10000", 10)
   };

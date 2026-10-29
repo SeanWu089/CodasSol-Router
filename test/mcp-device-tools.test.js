@@ -21,7 +21,7 @@ test("tools/list adds read-only device discovery and safe device selector to ope
 
 test("device discovery distinguishes local reachability, unknown agent backend and offline peers", () => {
   const devices = new DeviceRegistry();
-  devices.register({ id: "local", platform: "darwin", presence: "static", roots: ["/Users/Sean"] });
+  devices.register({ id: "local", platform: "darwin", presence: "static", roots: ["/Users/Example"] });
   devices.register({ id: "wins", platform: "win32", presence: "static", roots: [] });
   devices.register({ id: "peer", platform: "win32", presence: "static", enabled: false });
   const entries = [

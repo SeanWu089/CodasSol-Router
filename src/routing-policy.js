@@ -119,19 +119,7 @@ export class RoutingPolicy {
       return { ...best[0].device, path };
     }
 
-    // Keep the production-only v0.2 recovery route for the legacy Windows
-    // Agent, which still reports roots=[]. Constrain it to prior D:/E: data
-    // drives on one unique online Windows Agent; DevSpace still checks its
-    // actual allowedRoots. Never infer that an unmatched C: path is on Mac.
-    const legacy = this.devices.get("SEANSWPC");
-    const windowsOnline = this.devices.list({ onlineOnly: true })
-      .filter((device) => device.platform === "win32");
-    if (/^[de]:[\\/]/i.test(path) && legacy?.online && legacy.platform === "win32" &&
-        legacy.roots.length === 0 && windowsOnline.length === 1 &&
-        windowsOnline[0].id === legacy.id) {
-      return { ...legacy, path };
-    }
-
+    // Rootless legacy Agents require explicit device selection; no personal recovery route.
     const onlineDevices = this.devices.list({ onlineOnly: true });
     if (onlineDevices.length === 0) {
       throw new RoutingDecisionError(
