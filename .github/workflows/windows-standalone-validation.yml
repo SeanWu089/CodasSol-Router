@@ -54,3 +54,6 @@ jobs:
       - name: Actual PowerShell 5.1 wrapper and child process regression
         shell: powershell
         run: ./test/windows/clean-process.ps1
+      - name: Desktop resume scope guard
+        shell: powershell
+        run: ./test/windows/resume-desktop.ps1
