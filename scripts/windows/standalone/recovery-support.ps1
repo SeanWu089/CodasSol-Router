@@ -97,3 +97,33 @@ function Switch-RuntimeForRollback($Root, $Backup, $Rename = {param($a,$b) [IO.D
     }
     Write-RecoveryJournal $Backup 'RUNTIME_RESTORED' @{failed=$failed}
 }
+function Read-SavedTasks($File, $Root, $OwnerSid) {
+    # Windows PowerShell 5.1 ConvertFrom-Json can emit the JSON array as a single
+    # pipeline object. Assign first, then enumerate its elements explicitly.
+    $parsed = Get-Content -LiteralPath $File -Raw | ConvertFrom-Json
+    $names=@('CodasSol Standalone V02 DevSpace','CodasSol Standalone V02 Router','CodasSol Standalone V02 Outbound')
+    $seen=@{}
+    foreach($record in $parsed) {
+        if($null -eq $record -or $record -is [array] -or $record.name -isnot [string] -or $record.name -notin $names) {throw 'SAVED_TASK_NAME_OR_STRUCTURE_INVALID'}
+        if($seen.ContainsKey($record.name)) {throw 'DUPLICATE_SAVED_TASK'}
+        $seen[$record.name]=$true
+        if($record.running -isnot [bool] -or $record.xml -isnot [string] -or [string]::IsNullOrWhiteSpace($record.xml)) {throw 'SAVED_TASK_FIELDS_INVALID'}
+        if($record.PSObject.Properties.Name -contains 'TaskPath' -and $record.TaskPath -ne '\') {throw 'SAVED_TASK_PATH_INVALID'}
+        $settings=New-Object System.Xml.XmlReaderSettings
+        $settings.DtdProcessing=[System.Xml.DtdProcessing]::Prohibit
+        $settings.XmlResolver=$null
+        $reader=[System.Xml.XmlReader]::Create((New-Object IO.StringReader($record.xml)),$settings)
+        try {$xml=New-Object System.Xml.XmlDocument;$xml.XmlResolver=$null;$xml.Load($reader)} finally {$reader.Dispose()}
+        $ns=New-Object System.Xml.XmlNamespaceManager($xml.NameTable);$ns.AddNamespace('t','http://schemas.microsoft.com/windows/2004/02/mit/task')
+        $exec=@($xml.SelectNodes('/t:Task/t:Actions/*',$ns))
+        $sidNode=$xml.SelectSingleNode('/t:Task/t:Principals/t:Principal/t:UserId',$ns)
+        if($exec.Count -ne 1 -or $exec[0].LocalName -ne 'Exec' -or -not $sidNode) {throw 'SAVED_TASK_DEFINITION_INVALID'}
+        $principal=$sidNode.InnerText
+        if($principal -ne $OwnerSid){$principal=(New-Object Security.Principal.NTAccount($principal)).Translate([Security.Principal.SecurityIdentifier]).Value}
+        if($principal -ne $OwnerSid) {throw 'SAVED_TASK_OWNER_MISMATCH'}
+        $fake=[pscustomobject]@{TaskName=$record.name;TaskPath='\';Principal=[pscustomobject]@{UserId=[Security.Principal.WindowsIdentity]::GetCurrent().Name};Actions=@([pscustomobject]@{Execute=[string]$exec[0].Command;Arguments=[string]$exec[0].Arguments})}
+        Assert-RuntimeTask $fake $Root $OwnerSid
+        # Only normalized, independently validated individual records are emitted.
+        [pscustomobject]@{name=$record.name;running=$record.running;xml=$record.xml}
+    }
+}

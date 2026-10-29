@@ -17,23 +17,8 @@ try {
     }
     $taskFile=Join-Path $backup 'tasks.json'
     if(-not (Test-Path $taskFile)){throw 'Original task definitions missing.'}
-    $records=@(Get-Content $taskFile -Raw | ConvertFrom-Json)
+    $records=@(Read-SavedTasks $taskFile $root $owner)
     if($records.Count -eq 0){throw 'No previous tasks were saved. Restoring files cannot restore a previous connection.'}
-    # XML is data only. Do not register any definition until validated.
-    foreach($record in $records) {
-        if($record.name -notin $names){throw 'Unexpected saved task name.'}
-        $xml=New-Object System.Xml.XmlDocument;$xml.XmlResolver=$null;$xml.LoadXml($record.xml)
-        if($xml.DocumentType){throw 'Task XML DTD not permitted.'}
-        $ns=New-Object System.Xml.XmlNamespaceManager($xml.NameTable);$ns.AddNamespace('t','http://schemas.microsoft.com/windows/2004/02/mit/task')
-        $exec=@($xml.SelectNodes('/t:Task/t:Actions/*',$ns))
-        $sidNode=$xml.SelectSingleNode('/t:Task/t:Principals/t:Principal/t:UserId',$ns)
-        if($exec.Count -ne 1 -or $exec[0].LocalName -ne 'Exec' -or -not $sidNode){throw 'Unsupported saved task definition.'}
-        $principal=$sidNode.InnerText
-        if($principal -ne $owner){$principal=(New-Object Security.Principal.NTAccount($principal)).Translate([Security.Principal.SecurityIdentifier]).Value}
-        $fake=[pscustomobject]@{TaskName=$record.name;TaskPath='\';Principal=[pscustomobject]@{UserId=[Security.Principal.WindowsIdentity]::GetCurrent().Name};Actions=@([pscustomobject]@{Execute=$exec[0].Command;Arguments=$exec[0].Arguments})}
-        if($principal -ne $owner){throw 'Saved task belongs to another user.'}
-        Assert-RuntimeTask $fake $root $owner
-    }
     foreach($name in $names){$t=Get-ScheduledTask -TaskName $name -TaskPath '\' -ErrorAction SilentlyContinue;if($t){Assert-RuntimeTask $t $root $owner}}
     $processes=@(Get-RuntimeProcesses $root);foreach($p in $processes){Assert-RuntimeProcess $p $root $owner}
     $dv=Get-SafeHealth 'devspace' 'http://127.0.0.1:7676/healthz';$rv=Get-SafeHealth 'router' 'http://127.0.0.1:17678/_codassol/health'

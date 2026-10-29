@@ -35,3 +35,6 @@ jobs:
       - name: Isolated recovery failure injection (no live task or process mutation)
         shell: powershell
         run: ./test/windows/recovery-faults.ps1
+      - name: Original rc.1 saved-task format and malicious-record regression
+        shell: powershell
+        run: ./test/windows/saved-task-format.ps1
