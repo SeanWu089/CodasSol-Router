@@ -2,7 +2,7 @@
 set -euo pipefail
 here="$(cd "$(dirname "$0")/.." && pwd)"
 out="$here/dist"
-version='v0.2.0-rc.1'
+version='v0.2.0-rc.2'
 name="CodasSol-Windows-Clean-Reinstall-$version"
 zipname="$name.zip"
 cache="$out/.downloads"
@@ -60,7 +60,7 @@ files={str(p.relative_to(root)):hashlib.sha256(p.read_bytes()).hexdigest() for p
 for name in files:
     if Path(name).name in {'outbound-agent.json','router.json','auth.json','device-id.txt','roots.txt'}:
         raise SystemExit('Private runtime state in payload: '+name)
-manifest={'version':'0.2.0-clean-rc.1','sourceCommit':os.environ['SOURCE_COMMIT'],'qualification':'Windows automated CI; physical Windows acceptance pending','dependencies':{'node':'22.23.3 win-x64 bundled, checksum checked against retained upstream list','devspace':'1.1.0-beta.4 fetched from npm during installation','powershell':'Windows 5.1; isolated CI parsing and fault injection'},'files':files}
+manifest={'version':'0.2.0-clean-rc.2','sourceCommit':os.environ['SOURCE_COMMIT'],'qualification':'Windows automated CI; physical Windows acceptance pending','dependencies':{'node':'22.23.3 win-x64 bundled, checksum checked against retained upstream list','devspace':'1.1.0-beta.4 fetched from npm during installation','powershell':'Windows 5.1; isolated CI parsing and fault injection'},'files':files}
 (root/'release-manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
 MANIFEST
 

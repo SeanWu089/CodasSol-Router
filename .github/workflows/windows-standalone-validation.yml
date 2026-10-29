@@ -51,3 +51,6 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Pinned dependency install failed' }
           node scripts/windows/clean/config-ci.mjs $root
           if ($LASTEXITCODE -ne 0) { throw 'Private config compatibility failed' }
+      - name: Actual PowerShell 5.1 wrapper and child process regression
+        shell: powershell
+        run: ./test/windows/clean-process.ps1

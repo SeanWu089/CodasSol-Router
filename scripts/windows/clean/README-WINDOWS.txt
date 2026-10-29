@@ -1,4 +1,4 @@
-CodasSol Clean Reinstall v0.2.0-rc.1 — PRE-RELEASE
+CodasSol Clean Reinstall v0.2.0-rc.2 — PRE-RELEASE
 
 Extract the ZIP fully to a new folder outside the old CodasSol runtime.
 Double-click CLEAN-REINSTALL.cmd as the SAME normal Windows user (not administrator).
